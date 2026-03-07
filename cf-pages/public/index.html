@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gateway Capability Probe</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>Gateway Capability Probe</h1>
+      <p class="sub">输入 OpenAI-compatible 网关 URL 和 API Key，自动探测模型、聊天、工具调用、Responses、Embeddings、图片接口和文档端点。</p>
+      <div class="hero-chips">
+        <span class="chip">适合多智能体编排前的兼容性检查</span>
+        <span class="chip">支持 OpenAI-compatible 网关</span>
+        <span class="chip">本页不会保存你的 Key</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <form id="probe-form">
+        <div class="grid">
+          <label>
+            Base URL
+            <input id="base-url" name="base_url" placeholder="https://example.com" required>
+          </label>
+          <label>
+            API Key
+            <input id="api-key" name="api_key" type="password" placeholder="sk-..." required>
+          </label>
+          <label>
+            Timeout (seconds)
+            <input id="timeout" name="timeout" type="number" min="1" max="120" value="20" required>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" id="submit-button">开始探测</button>
+          <span class="hint">API Key 只用于当前探测请求，不会持久化保存。</span>
+        </div>
+      </form>
+      <div class="progress hidden" id="progress">
+        <div class="spinner"></div>
+        <div>
+          <strong>正在检测，请等待。</strong>
+          <p class="hint">系统会依次探测 models、chat、tool calling、responses、embeddings、images 和 docs。</p>
+        </div>
+      </div>
+      <p class="error" id="error"></p>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div>
+          <h2>如何使用</h2>
+          <ul class="plain-list">
+            <li>输入网关根地址，例如 `https://example.com`。</li>
+            <li>输入对应 API Key。</li>
+            <li>点击“开始探测”，等待结果卡片返回。</li>
+            <li>优先关注 `chat_completions`、`tool_calling`、`responses` 这三项，它们最影响多智能体系统可用性。</li>
+          </ul>
+        </div>
+        <div>
+          <h2>我在做的开源方向</h2>
+          <ul class="plain-list">
+            <li><a href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">Gateway Prober</a>：快速判断第三方 LLM 网关到底能不能真用。</li>
+            <li><a href="https://lzhnew.pages.dev" target="_blank" rel="noreferrer">旧站存档</a>：当前主站迁移完成前，旧内容先保留在独立地址。</li>
+            <li><a href="https://mbti.lizehao.asia" target="_blank" rel="noreferrer">MBTI 项目</a>：另一个已发布的 Pages 示例。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="results-panel">
+      <div class="summary" id="summary"></div>
+      <div class="callout hidden" id="callout"></div>
+      <div class="cards" id="cards"></div>
+    </section>
+  </main>
+
+  <template id="card-template">
+    <article class="card">
+      <div class="topline">
+        <strong class="name"></strong>
+        <span class="status"></span>
+      </div>
+      <div class="meta"></div>
+      <p class="summary-text"></p>
+      <pre class="details"></pre>
+    </article>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

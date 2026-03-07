@@ -6,7 +6,9 @@ It supports:
 
 - A local Web UI for non-technical users
 - A CLI for scripting and automation
+- A Cloudflare Pages version for public deployment
 - Capability checks for models, chat, tool calling, responses, embeddings, images, and docs endpoints
+- A lightweight recommendation summary for multi-agent suitability
 
 ## Quick Start
 
@@ -35,6 +37,29 @@ or
 ```powershell
 .\start.ps1
 ```
+
+## Cloudflare Pages Deployment
+
+This repo also includes a Cloudflare Pages build under `cf-pages/`.
+
+Public UI:
+
+- `cf-pages/public/index.html`
+- `cf-pages/public/app.js`
+- `cf-pages/public/styles.css`
+
+Server-side probe endpoint:
+
+- `cf-pages/functions/api/probe.js`
+
+Deploy example:
+
+```powershell
+wrangler pages project create gateway-prober --production-branch main
+wrangler pages deploy .\cf-pages\public --project-name gateway-prober --branch main
+```
+
+If you want your custom domain to point to the Pages project, make sure the relevant DNS record is present in Cloudflare DNS. Pages project binding alone is not enough.
 
 ## CLI Usage
 
