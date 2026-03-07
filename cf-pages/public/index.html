@@ -5,18 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gateway Capability Probe</title>
   <link rel="icon" type="image/svg+xml" href="/avatar.svg">
+  <link rel="shortcut icon" href="/avatar.svg">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main class="shell">
     <section class="hero">
-      <div class="hero-header">
-        <img class="avatar" src="/avatar.svg" alt="Gateway Prober Avatar">
-        <div>
-          <h1>Gateway Capability Probe</h1>
-          <p class="sub">输入 OpenAI-compatible 网关 URL 和 API Key，快速判断这个网关到底适合做聊天、工具调用、多智能体、RAG，还是只能做最基础的文本任务。</p>
-        </div>
-      </div>
+      <h1>Gateway Capability Probe</h1>
+      <p class="sub">输入 OpenAI-compatible 网关地址和 API Key，快速判断这个网关到底适合做聊天、工具调用、多智能体、RAG，还是只能做基础文本任务。</p>
       <div class="hero-chips">
         <span class="chip">多智能体兼容性检查</span>
         <span class="chip">支持 OpenAI-compatible 网关</span>
@@ -42,14 +38,14 @@
         </div>
         <div class="actions">
           <button type="submit" id="submit-button">开始检测</button>
-          <span class="hint">API Key 只用于当前探测请求，不会持久化保存。</span>
+          <span class="hint">API Key 仅用于当前检测请求，不会被持久化保存。</span>
         </div>
       </form>
       <div class="progress hidden" id="progress">
         <div class="spinner"></div>
         <div>
-          <strong>正在检测，请等待。</strong>
-          <p class="hint">系统会依次探测 models、chat、tool calling、responses、embeddings、images 和 docs。</p>
+          <strong>正在检测，请稍候。</strong>
+          <p class="hint">系统会依次检查 models、chat、tool calling、responses、embeddings、images 和 docs。</p>
         </div>
       </div>
       <p class="error" id="error"></p>
@@ -71,7 +67,7 @@
           <ul class="plain-list">
             <li><a href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">github.com/lizehao-1/gateway-prober</a></li>
           </ul>
-          <p class="hint">页面下方只保留当前项目仓库入口，方便查看源码和部署方式。</p>
+          <p class="hint">页面下方只保留当前项目仓库入口，方便查看源码和本地部署方式。</p>
         </div>
       </div>
     </section>
@@ -81,10 +77,10 @@
         <div>
           <h2>每个能力对应什么</h2>
           <ul class="plain-list">
-            <li><strong>models</strong>：列出这个网关暴露了哪些模型，先判断模型命名和可见范围。</li>
+            <li><strong>models</strong>：列出这个网关暴露了哪些模型，先判断模型可见范围。</li>
             <li><strong>chat_completions</strong>：最基础的文本能力，适合聊天、问答、总结、代码解释、文案生成。</li>
             <li><strong>tool_calling</strong>：工具调用能力，适合多智能体系统、自动化助手、工作流编排。</li>
-            <li><strong>responses</strong>：较新的统一接口能力，适合接新式 SDK 和更完整的 agent workflow。</li>
+            <li><strong>responses</strong>：较新的统一接口能力，适合接新版 SDK 和更完整的 agent workflow。</li>
             <li><strong>embeddings</strong>：向量嵌入能力，适合 RAG、知识库检索、语义搜索。</li>
             <li><strong>images</strong>：图片生成能力，适合海报、封面图、配图、设计草图。</li>
             <li><strong>docs</strong>：补充判断文档端点和接口实现风格，不是核心能力。</li>
@@ -95,7 +91,7 @@
           <ul class="plain-list">
             <li>如果 `chat_completions` 通过：适合普通文本任务，比如聊天、总结、写作、代码辅助。</li>
             <li>如果 `tool_calling` 也通过：适合做多智能体、自动化执行、外部工具接入。</li>
-            <li>如果 `responses` 也通过：适合优先接新式 OpenAI SDK，后续扩展性更好。</li>
+            <li>如果 `responses` 也通过：适合优先接新版 OpenAI SDK，后续扩展性更好。</li>
             <li>如果 `embeddings` 不通过：不建议直接拿它做 RAG 或向量数据库检索。</li>
             <li>如果 `images` 不通过：说明这个 Key 更偏文本用途，不适合图像生成场景。</li>
             <li>如果核心三项都通过：通常适合做 Agent 平台、自动化工作台、研究助手。</li>

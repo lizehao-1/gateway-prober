@@ -18,7 +18,12 @@ function renderSummary(baseUrl, results) {
   const passCount = results.filter((item) => item.ok).length;
   const failCount = results.length - passCount;
   summaryNode.innerHTML = "";
-  [`Base URL: ${baseUrl}`, `PASS: ${passCount}`, `FAIL: ${failCount}`].forEach((text) => {
+
+  [
+    `Base URL: ${baseUrl}`,
+    `通过: ${passCount}`,
+    `失败: ${failCount}`,
+  ].forEach((text) => {
     const chip = document.createElement("div");
     chip.className = "chip";
     chip.textContent = text;
@@ -28,15 +33,20 @@ function renderSummary(baseUrl, results) {
 
 function renderCards(results) {
   cardsNode.innerHTML = "";
+
   for (const item of results) {
     const fragment = cardTemplate.content.cloneNode(true);
     fragment.querySelector(".name").textContent = item.name;
+
     const status = fragment.querySelector(".status");
     status.textContent = item.ok ? "PASS" : "FAIL";
     status.className = `status ${item.ok ? "ok" : "bad"}`;
-    fragment.querySelector(".meta").textContent = `status=${item.status_code ?? "-"}, elapsed=${item.elapsed_ms}ms`;
+
+    fragment.querySelector(".meta").textContent =
+      `status=${item.status_code ?? "-"}, elapsed=${item.elapsed_ms}ms`;
     fragment.querySelector(".summary-text").textContent = item.summary;
     fragment.querySelector(".details").textContent = JSON.stringify(item.details ?? {}, null, 2);
+
     cardsNode.appendChild(fragment);
   }
 }
@@ -49,7 +59,7 @@ function renderCallout(results) {
 
   let text = "";
   if (requiredOk) {
-    text = "这个网关适合文本型多智能体系统，chat_completions、tool_calling、responses 都可用。";
+    text = "这个网关适合做文本型多智能体系统，chat_completions、tool_calling、responses 都可用。";
   } else {
     text = "这个网关不适合直接作为完整多智能体后端，至少有一项核心文本能力没有通过。";
   }
@@ -57,6 +67,7 @@ function renderCallout(results) {
   if (!embeddingsOk) {
     text += " 当前不建议把 RAG 或向量检索层直接绑在这个网关上。";
   }
+
   if (imagesOk) {
     text += " 图片接口可用，可以额外承载图像生成场景。";
   }
@@ -83,10 +94,12 @@ form.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || "检测失败");
     }
+
     renderSummary(payload.base_url, data.results);
     renderCallout(data.results);
     renderCards(data.results);

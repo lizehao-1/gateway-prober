@@ -1,39 +1,42 @@
 # Gateway Prober
 
-一个用于检测 OpenAI-compatible 网关能力的小工具。
+一个用于检测 OpenAI-compatible 网关真实能力的小工具。
 
 你只需要输入：
 
 - 网关根地址
 - API Key
 
-它就会自动检测这个网关是否支持：
+它会自动探测这些能力：
 
 - 模型列表
 - `chat/completions`
-- 工具调用 `tool_calling`
+- `tool_calling`
 - `responses`
 - `embeddings`
-- 图片生成
+- 图片生成接口
 - 文档相关端点
 
-这个项目适合以下场景：
+适合这些场景：
 
 - 接第三方 LLM 网关前先做兼容性检查
-- 判断一个 Key 适不适合做多智能体系统
+- 判断一个 Key 是否适合做多智能体系统
 - 判断一个网关能不能做 RAG、图片生成、自动化工作流
 - 给团队或客户做快速技术验收
 
-## 功能形式
+## 支持本地部署吗
 
-项目提供两种使用方式：
+支持。
+
+目前有三种使用方式：
 
 1. 本地 Web 页面
-2. 命令行 CLI
+2. CLI 命令行
+3. Docker 本地容器
 
-此外，还提供了一套 Cloudflare Pages 版本，方便直接部署到公网域名。
+此外还提供了一套 Cloudflare Pages 版本，方便直接部署到公网域名。
 
-## 本地运行
+## 本地 Web 运行
 
 先安装依赖：
 
@@ -47,9 +50,11 @@ pip install -r requirements.txt
 python .\src\web_app.py
 ```
 
-打开：
+打开浏览器访问：
 
-[http://127.0.0.1:5050](http://127.0.0.1:5050)
+```text
+http://127.0.0.1:5050
+```
 
 Windows 下也可以直接用：
 
@@ -57,13 +62,13 @@ Windows 下也可以直接用：
 .\start.bat
 ```
 
-或：
+或者：
 
 ```powershell
 .\start.ps1
 ```
 
-## CLI 用法
+## 本地 CLI 用法
 
 文本报告：
 
@@ -76,6 +81,34 @@ JSON 输出：
 ```powershell
 python .\src\probe_gateway.py --base-url "https://example.com" --api-key "sk-xxx" --format json
 ```
+
+## Docker 本地部署
+
+如果你本机装了 Docker，也可以直接容器运行。
+
+构建镜像：
+
+```powershell
+docker build -t gateway-prober .
+```
+
+启动容器：
+
+```powershell
+docker run --rm -p 5050:5050 gateway-prober
+```
+
+然后访问：
+
+```text
+http://127.0.0.1:5050
+```
+
+说明：
+
+- 这个容器默认启动本地 Flask Web 版
+- 不依赖 Cloudflare 才能使用
+- 只要本机能联网访问目标网关，就能完成检测
 
 ## Cloudflare Pages 版本
 
@@ -104,7 +137,7 @@ wrangler pages deploy .\cf-pages\public --project-name gateway-prober --branch m
 - `tool_calling`
   适合多智能体编排、函数调用、外部工具接入。
 - `responses`
-  适合接较新的统一接口和更完整的 agent workflow。
+  适合较新的统一接口和更完整的 agent workflow。
 - `embeddings`
   适合 RAG、向量检索、知识库搜索。
 - `images`
@@ -114,16 +147,11 @@ wrangler pages deploy .\cf-pages\public --project-name gateway-prober --branch m
 
 ## 怎么理解检测结果
 
-- 如果 `chat_completions` 通过：
-  这个 Key 至少适合普通文本任务。
-- 如果 `tool_calling` 也通过：
-  说明它更适合做多智能体系统或自动化工作流。
-- 如果 `responses` 也通过：
-  更适合接新式 SDK，后续扩展空间更大。
-- 如果 `embeddings` 不通过：
-  不建议直接拿这个网关做 RAG。
-- 如果 `images` 不通过：
-  更适合文本任务，不适合图像生成。
+- 如果 `chat_completions` 通过，这个 Key 至少适合普通文本任务。
+- 如果 `tool_calling` 也通过，说明它更适合做多智能体系统或自动化工作流。
+- 如果 `responses` 也通过，更适合接新 SDK，后续扩展空间更大。
+- 如果 `embeddings` 不通过，不建议直接拿这个网关做 RAG。
+- 如果 `images` 不通过，更适合文本任务，不适合图像生成。
 
 ## 注意事项
 
