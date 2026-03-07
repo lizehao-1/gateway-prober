@@ -35,7 +35,7 @@
           </label>
         </div>
         <div class="actions">
-          <button type="submit" id="submit-button">开始探测</button>
+          <button type="submit" id="submit-button">开始检测</button>
           <span class="hint">API Key 只用于当前探测请求，不会持久化保存。</span>
         </div>
       </form>
@@ -55,17 +55,44 @@
           <h2>如何使用</h2>
           <ul class="plain-list">
             <li>输入网关根地址，例如 `https://example.com`。</li>
-            <li>输入对应 API Key。</li>
-            <li>点击“开始探测”，等待结果卡片返回。</li>
-            <li>优先关注 `chat_completions`、`tool_calling`、`responses` 这三项，它们最影响多智能体系统可用性。</li>
+            <li>输入对应的 API Key。</li>
+            <li>点击“开始检测”，等待结果卡片返回。</li>
+            <li>优先关注 `chat_completions`、`tool_calling`、`responses`，这三项最影响多智能体系统可用性。</li>
           </ul>
         </div>
         <div>
-          <h2>我在做的开源方向</h2>
+          <h2>项目仓库</h2>
           <ul class="plain-list">
-            <li><a href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">Gateway Prober</a>：快速判断第三方 LLM 网关到底能不能真用。</li>
-            <li><a href="https://lzhnew.pages.dev" target="_blank" rel="noreferrer">旧站存档</a>：当前主站迁移完成前，旧内容先保留在独立地址。</li>
-            <li><a href="https://mbti.lizehao.asia" target="_blank" rel="noreferrer">MBTI 项目</a>：另一个已发布的 Pages 示例。</li>
+            <li><a href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">github.com/lizehao-1/gateway-prober</a></li>
+          </ul>
+          <p class="hint">页面下方只保留当前项目仓库入口，方便查看源码和部署方式。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="split">
+        <div>
+          <h2>能力分别代表什么</h2>
+          <ul class="plain-list">
+            <li><strong>models</strong>：列出这个网关暴露的模型名，先确认有哪些模型能被调。</li>
+            <li><strong>chat_completions</strong>：最基础的文本对话能力，适合聊天、问答、代码辅助、文案生成。</li>
+            <li><strong>tool_calling</strong>：函数/工具调用能力，适合多智能体编排、自动化工作流、外部工具接入。</li>
+            <li><strong>responses</strong>：较新的统一接口能力，适合接新式 SDK 和更完整的 agent workflow。</li>
+            <li><strong>embeddings</strong>：向量嵌入能力，适合 RAG、知识库检索、语义搜索。</li>
+            <li><strong>images</strong>：图片生成接口，适合封面图、海报、配图、视觉原型。</li>
+            <li><strong>docs</strong>：文档类端点是否存在，主要用于补充判断，不是核心能力。</li>
+          </ul>
+        </div>
+        <div>
+          <h2>这个 Key 建议用来做什么</h2>
+          <ul class="plain-list">
+            <li>如果 `chat_completions` 通过：适合做普通聊天、文案生成、总结、代码解释。</li>
+            <li>如果 `tool_calling` 也通过：适合做多智能体系统、自动化助手、任务编排平台。</li>
+            <li>如果 `responses` 也通过：适合优先接新式 OpenAI SDK，后续升级空间更大。</li>
+            <li>如果 `embeddings` 不通过：不建议直接拿它做 RAG 或知识库向量检索。</li>
+            <li>如果 `images` 不通过：说明这个 Key 更适合文本任务，不适合图像生成场景。</li>
+            <li>如果核心三项都通过：这是比较适合做 Agent 平台、研究工作台、自动化应用的 Key。</li>
           </ul>
         </div>
       </div>
