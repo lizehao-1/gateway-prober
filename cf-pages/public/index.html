@@ -4,17 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gateway Capability Probe</title>
+  <link rel="icon" type="image/svg+xml" href="/avatar.svg">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main class="shell">
     <section class="hero">
-      <h1>Gateway Capability Probe</h1>
-      <p class="sub">输入 OpenAI-compatible 网关 URL 和 API Key，自动探测模型、聊天、工具调用、Responses、Embeddings、图片接口和文档端点。</p>
+      <div class="hero-header">
+        <img class="avatar" src="/avatar.svg" alt="Gateway Prober Avatar">
+        <div>
+          <h1>Gateway Capability Probe</h1>
+          <p class="sub">输入 OpenAI-compatible 网关 URL 和 API Key，快速判断这个网关到底适合做聊天、工具调用、多智能体、RAG，还是只能做最基础的文本任务。</p>
+        </div>
+      </div>
       <div class="hero-chips">
-        <span class="chip">适合多智能体编排前的兼容性检查</span>
+        <span class="chip">多智能体兼容性检查</span>
         <span class="chip">支持 OpenAI-compatible 网关</span>
-        <span class="chip">本页不会保存你的 Key</span>
+        <span class="chip">不会持久化保存 Key</span>
       </div>
     </section>
 
@@ -55,9 +61,9 @@
           <h2>如何使用</h2>
           <ul class="plain-list">
             <li>输入网关根地址，例如 `https://example.com`。</li>
-            <li>输入对应的 API Key。</li>
-            <li>点击“开始检测”，等待结果卡片返回。</li>
-            <li>优先关注 `chat_completions`、`tool_calling`、`responses`，这三项最影响多智能体系统可用性。</li>
+            <li>输入对应 API Key。</li>
+            <li>点击“开始检测”，等待结果返回。</li>
+            <li>优先关注 `chat_completions`、`tool_calling`、`responses`，这三项最影响多智能体可用性。</li>
           </ul>
         </div>
         <div>
@@ -73,26 +79,26 @@
     <section class="panel">
       <div class="split">
         <div>
-          <h2>能力分别代表什么</h2>
+          <h2>每个能力对应什么</h2>
           <ul class="plain-list">
-            <li><strong>models</strong>：列出这个网关暴露的模型名，先确认有哪些模型能被调。</li>
-            <li><strong>chat_completions</strong>：最基础的文本对话能力，适合聊天、问答、代码辅助、文案生成。</li>
-            <li><strong>tool_calling</strong>：函数/工具调用能力，适合多智能体编排、自动化工作流、外部工具接入。</li>
+            <li><strong>models</strong>：列出这个网关暴露了哪些模型，先判断模型命名和可见范围。</li>
+            <li><strong>chat_completions</strong>：最基础的文本能力，适合聊天、问答、总结、代码解释、文案生成。</li>
+            <li><strong>tool_calling</strong>：工具调用能力，适合多智能体系统、自动化助手、工作流编排。</li>
             <li><strong>responses</strong>：较新的统一接口能力，适合接新式 SDK 和更完整的 agent workflow。</li>
             <li><strong>embeddings</strong>：向量嵌入能力，适合 RAG、知识库检索、语义搜索。</li>
-            <li><strong>images</strong>：图片生成接口，适合封面图、海报、配图、视觉原型。</li>
-            <li><strong>docs</strong>：文档类端点是否存在，主要用于补充判断，不是核心能力。</li>
+            <li><strong>images</strong>：图片生成能力，适合海报、封面图、配图、设计草图。</li>
+            <li><strong>docs</strong>：补充判断文档端点和接口实现风格，不是核心能力。</li>
           </ul>
         </div>
         <div>
-          <h2>这个 Key 建议用来做什么</h2>
+          <h2>这个 Key 适合用来做什么</h2>
           <ul class="plain-list">
-            <li>如果 `chat_completions` 通过：适合做普通聊天、文案生成、总结、代码解释。</li>
-            <li>如果 `tool_calling` 也通过：适合做多智能体系统、自动化助手、任务编排平台。</li>
-            <li>如果 `responses` 也通过：适合优先接新式 OpenAI SDK，后续升级空间更大。</li>
-            <li>如果 `embeddings` 不通过：不建议直接拿它做 RAG 或知识库向量检索。</li>
-            <li>如果 `images` 不通过：说明这个 Key 更适合文本任务，不适合图像生成场景。</li>
-            <li>如果核心三项都通过：这是比较适合做 Agent 平台、研究工作台、自动化应用的 Key。</li>
+            <li>如果 `chat_completions` 通过：适合普通文本任务，比如聊天、总结、写作、代码辅助。</li>
+            <li>如果 `tool_calling` 也通过：适合做多智能体、自动化执行、外部工具接入。</li>
+            <li>如果 `responses` 也通过：适合优先接新式 OpenAI SDK，后续扩展性更好。</li>
+            <li>如果 `embeddings` 不通过：不建议直接拿它做 RAG 或向量数据库检索。</li>
+            <li>如果 `images` 不通过：说明这个 Key 更偏文本用途，不适合图像生成场景。</li>
+            <li>如果核心三项都通过：通常适合做 Agent 平台、自动化工作台、研究助手。</li>
           </ul>
         </div>
       </div>
