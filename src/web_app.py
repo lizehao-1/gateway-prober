@@ -588,7 +588,7 @@ PAGE_TEMPLATE = """
       lines.push('- 如果你要接 IDE 或聊天助手，先用报告里优先级最高的文本模型。');
       lines.push('- 如果你要接 RAG，先确认 /v1/embeddings 稳定返回向量，再做索引。');
       lines.push('- 如果你要接图片工作流，再单独复测 images 或高级预设里的图片相关端点。');
-      return lines.join('\n');
+      return lines.join('\\n');
     }
 
     function renderAdviceAndReport(results, baseUrl) {
