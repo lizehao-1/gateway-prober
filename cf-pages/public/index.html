@@ -59,7 +59,7 @@
 
         <label>Enabled Probes
           <div class="checks" id="probe-options"></div>
-          <span class="hint">默认关闭 Capabilities 和 Docs，因为它们更细也更慢。勾选 Capabilities 后，页面会额外给出较完整的接入建议、模型判断和可复制报告。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
+          <span class="hint">默认先测最常用的文本能力，Images 默认关闭，避免首次探测过慢。Capabilities 最值得在准备正式接入时打开，因为它会补充模型级细扫、接入建议和完整报告。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
         </label>
 
         <label>高级预设
@@ -87,7 +87,13 @@
     <section class="panel hidden" id="results-panel">
       <div class="summary" id="summary-chips"></div>
       <div class="rankings hidden" id="ranking-chips"></div>
-      <div class="callout hidden" id="callout"></div>
+      <div class="report hidden" id="summary-panel">
+        <div class="topline">
+          <strong>整体总结</strong>
+          <span class="hint" id="selection-hint"></span>
+        </div>
+        <p class="summary-text" id="callout"></p>
+      </div>
       <div class="report hidden" id="report-panel">
         <div class="topline">
           <strong>完整报告</strong>

@@ -17,22 +17,39 @@
     </section>
 
     <section class="panel">
-      <h2>1. 本地和线上怎么用</h2>
-      <p>如果你要测本地 `http://127.0.0.1:端口`、`localhost:端口`，请直接用仓库里的 Flask 版，因为 Cloudflare Pages 线上版只能访问公网 https 地址。</p>
+      <h2>1. 现在默认会测什么</h2>
+      <p>默认顺序是 Models、Chat、Tools、Responses、Embeddings。Images 默认关闭，目的是让第一次探测更快，也更适合先判断“这个网关到底能不能正常接文本场景”。</p>
+      <p>即使你不勾 Capabilities，结果页也会先给一版尽量全面但简短的整体总结，帮你快速判断这个网关更适合接哪类客户端、哪类工作流。</p>
+    </section>
+
+    <section class="panel">
+      <h2>2. Capabilities 为什么更值得开</h2>
+      <p><code>Capabilities</code> 不是简单再多测几个请求，而是按模型和端点做更细的扫描。它会回答的不只是“接口通不通”，而是“哪些模型在这些接口上真的能用”。</p>
       <ul class="plain-list">
-        <li>本地 Flask 版：适合测本地部署、局域网、需要更灵活调试的情况。</li>
-        <li>Cloudflare Pages 版：适合把网页挂到域名上，给自己或别人远程使用。</li>
+        <li>适合排查“模型名能列出来，但实际一调用就失败”的兼容问题。</li>
+        <li>适合在准备正式接入 IDE、Agent、RAG 或自动化工作流前做最终判断。</li>
+        <li>开启后页面会额外生成更完整的接入建议、模型判断和可复制报告。</li>
       </ul>
     </section>
 
     <section class="panel">
-      <h2>2. 为什么很多时候 Base URL 要写到 /v1</h2>
-      <p>很多兼容网关实际上只在 <code>/v1</code> 下暴露接口。遇到根地址测不出来、写到 <code>/v1</code> 才有结果时，通常不是你的 Key 有问题，而是这个网关本来就是这样设计的。</p>
+      <h2>3. 为什么很多时候 Base URL 要写到 /v1</h2>
+      <p>不少兼容网关实际上只在 <code>/v1</code> 下暴露接口。理论上工具会尝试根地址和 <code>/v1</code>，但有些网关的转发、重写或防火墙规则只允许 <code>/v1/*</code>。遇到这种情况，直接把 Base URL 写成到 <code>/v1</code> 为止通常更稳。</p>
     </section>
 
     <section class="panel">
-      <h2>3. 如果 Embeddings 不可用，会影响什么</h2>
-      <p><code>/v1/embeddings</code> 不是聊天接口，而是把文本转成向量。它做不了时，普通聊天、代码问答、工具调用通常仍然可以用，但依赖“向量检索”的功能会变弱，甚至直接不可用。</p>
+      <h2>4. Quick / Deep 是什么</h2>
+      <p><strong>Quick</strong> 只测更常见的前缀，速度优先。<strong>Deep</strong> 会增加更多前缀变体，例如 <code>/openai/v1</code>、<code>/api/v1</code>、<code>/api/openai/v1</code>，兼容更广，但会更慢。</p>
+    </section>
+
+    <section class="panel">
+      <h2>5. Endpoint Strategy 是什么</h2>
+      <p><strong>Append</strong> 表示保留默认候选端点，再追加你手填的 Endpoint Paths 和高级预设。<strong>Custom Only</strong> 表示只测你手填和预设里的路径，不再测默认端点。</p>
+    </section>
+
+    <section class="panel">
+      <h2>6. 如果 Embeddings 不可用，会影响什么</h2>
+      <p><code>/v1/embeddings</code> 不是聊天接口，而是把文本转成向量。它做不了时，普通聊天、代码问答、工具调用通常仍然可以用，但依赖“向量检索”的功能会明显变弱，甚至直接不可用。</p>
       <ul class="plain-list">
         <li>通常还能做：普通对话、代码补全、代码解释、Agent 调工具、基于 <code>/chat/completions</code> 或 <code>/responses</code> 的常规 IDE 助手。</li>
         <li>通常会受影响：知识库问答、RAG、项目语义搜索、文档召回、相似内容匹配、先检索再回答的工作流。</li>
@@ -40,39 +57,68 @@
     </section>
 
     <section class="panel">
-      <h2>4. 常见后缀分别是干什么的</h2>
+      <h2>7. 常见后缀分别是干什么的</h2>
       <table>
         <thead>
-          <tr><th>后缀</th><th>用途</th><th>说明</th></tr>
+          <tr><th>后缀</th><th>用途</th><th>请求形态</th><th>说明</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>/v1/chat/completions</code></td><td>传统聊天接口</td><td>很多 IDE、旧插件、兼容层都还在用它。</td></tr>
-          <tr><td><code>/v1/responses</code></td><td>新版统一响应接口</td><td>新版 SDK 更常见。</td></tr>
-          <tr><td><code>/v1/embeddings</code></td><td>向量接口</td><td>用于知识库、RAG、语义检索。</td></tr>
-          <tr><td><code>/v1/images/generations</code></td><td>图片生成</td><td>用于海报、封面、视觉素材。</td></tr>
-          <tr><td><code>/v1/images/edits</code></td><td>图片编辑</td><td>通常需要原图或遮罩。</td></tr>
-          <tr><td><code>/v1/audio/transcriptions</code></td><td>语音转文字</td><td>常见于 Whisper 兼容接口。</td></tr>
+          <tr><td><code>/v1/chat/completions</code></td><td>传统聊天接口</td><td>messages[]</td><td>很多旧客户端、编辑器插件、网关都还在用它。</td></tr>
+          <tr><td><code>/v1/responses</code></td><td>新式统一响应接口</td><td>input</td><td>新版 SDK 更常见，文本和多模态能力通常会往这里集中。</td></tr>
+          <tr><td><code>/v1/responses/compact</code></td><td>Responses 变体</td><td>input</td><td>有些兼容层只实现 compact 版本。</td></tr>
+          <tr><td><code>/v1/embeddings</code></td><td>向量生成</td><td>input text</td><td>用于知识库、检索、RAG，通常需要专用 embedding 模型。</td></tr>
+          <tr><td><code>/v1/images/generations</code></td><td>图片生成</td><td>prompt</td><td>返回 url 或 base64 图像数据。</td></tr>
+          <tr><td><code>/v1/images/edits</code></td><td>图片编辑</td><td>image + prompt</td><td>通常要求上传原图或遮罩。</td></tr>
+          <tr><td><code>/v1/images/variations</code></td><td>图片变体</td><td>image</td><td>基于原图生成相近版本。</td></tr>
+          <tr><td><code>/v1/audio/transcriptions</code></td><td>语音转文字</td><td>audio file</td><td>常见于 Whisper 兼容接口。</td></tr>
+          <tr><td><code>/v1/audio/translations</code></td><td>语音翻译</td><td>audio file</td><td>把音频转成另一种语言文本。</td></tr>
+          <tr><td><code>/v1/audio/speech</code></td><td>文字转语音</td><td>text</td><td>有的网关会单独实现。</td></tr>
+          <tr><td><code>/v1/moderations</code></td><td>内容审核</td><td>text or image</td><td>检测违规、敏感内容。</td></tr>
+          <tr><td><code>/v1/assistants</code></td><td>Assistants API</td><td>assistant config</td><td>较重，很多兼容网关并不实现。</td></tr>
+          <tr><td><code>/v1/threads</code></td><td>Assistants 会话线程</td><td>thread messages</td><td>通常和 assistants 配套。</td></tr>
+          <tr><td><code>/v1/threads/runs</code></td><td>Assistants 执行</td><td>assistant + thread</td><td>把 thread 跑起来。</td></tr>
+          <tr><td><code>/v1/files</code></td><td>文件上传/管理</td><td>multipart file</td><td>常见于 fine-tuning、assistants、batch。</td></tr>
+          <tr><td><code>/v1/uploads</code></td><td>分段上传</td><td>multipart or chunk</td><td>部分新式 OpenAI API 会用。</td></tr>
+          <tr><td><code>/v1/batches</code></td><td>批处理任务</td><td>batch config</td><td>适合异步大批量请求。</td></tr>
+          <tr><td><code>/v1/realtime</code></td><td>实时音视频/双向流</td><td>websocket or session</td><td>通常不是简单的 HTTP POST。</td></tr>
+          <tr><td><code>/v1/fine_tuning/jobs</code></td><td>微调任务</td><td>training job</td><td>很多代理层只暴露模型调用，不暴露微调。</td></tr>
         </tbody>
       </table>
     </section>
 
     <section class="panel">
-      <h2>5. Capabilities 是什么</h2>
-      <p>前面的单项探测回答的是“这个接口能不能用”，而 <code>capabilities</code> 更像“细扫”：</p>
+      <h2>8. 高级预设里包含什么</h2>
       <ul class="plain-list">
-        <li>不是只看端点通不通，而是看哪个模型在这些端点上真的能用。</li>
-        <li>很适合排查“模型名列出来了，但实际调用失败”这种第三方网关常见问题。</li>
-        <li>开启后页面会额外生成一份完整报告，帮你总结推荐模型、已测通端点、失败端点和接入建议。</li>
+        <li><strong>图片编辑相关</strong>：测 <code>/v1/images/edits</code> 和 <code>/v1/images/variations</code></li>
+        <li><strong>音频相关</strong>：测 <code>/v1/audio/transcriptions</code>、<code>/v1/audio/translations</code>、<code>/v1/audio/speech</code></li>
+        <li><strong>审核相关</strong>：测 <code>/v1/moderations</code></li>
+        <li><strong>旧版文本编辑</strong>：测 <code>/v1/edits</code></li>
+        <li><strong>Assistants 相关</strong>：测 <code>/v1/assistants</code>、<code>/v1/threads</code>、<code>/v1/threads/runs</code></li>
+        <li><strong>文件与批处理</strong>：测 <code>/v1/files</code>、<code>/v1/uploads</code>、<code>/v1/batches</code></li>
+        <li><strong>Realtime 相关</strong>：测 <code>/v1/realtime</code></li>
+        <li><strong>微调相关</strong>：测 <code>/v1/fine_tuning/jobs</code></li>
       </ul>
     </section>
 
     <section class="panel">
-      <h2>6. opencode / IDE 怎么填更稳</h2>
-      <ul class="plain-list">
-        <li>最稳的填写方式通常是 Base URL 填到 <code>/v1</code> 为止。</li>
-        <li>如果客户端支持自定义后缀，就按检测结果使用 <code>/v1/chat/completions</code> 或 <code>/v1/responses</code>。</li>
-        <li>如果客户端固定某个后缀、又不允许修改，而网关不支持那个后缀，就会直接不兼容。</li>
-      </ul>
+      <h2>9. 页面结果怎么看</h2>
+      <p>结果页会先给你一段“整体总结”，即使没开 Capabilities，也会尽量把文本兼容性、工具调用、Embeddings、图片、推荐模型和补充端点情况压缩成一段能快速决策的结论。</p>
+      <p>如果开了 Capabilities，页面还会额外给一份完整报告，适合你发给团队、客户，或者作为后续接入决策依据。</p>
+    </section>
+
+    <section class="panel">
+      <h2>10. 推荐使用顺序</h2>
+      <pre>第一次排查：
+保持默认勾选，先看整体总结
+
+准备正式接入：
+把 Base URL 尽量写到 /v1
+按需要切到 Deep
+再勾上 Capabilities
+
+如果你要测特殊接口：
+填写 Endpoint Paths
+或者勾高级预设</pre>
     </section>
   </main>
 </body>

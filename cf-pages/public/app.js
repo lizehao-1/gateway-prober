@@ -6,7 +6,7 @@ const PROBE_OPTIONS = [
   { value: "embeddings", label: "Embeddings", description: "测试 /embeddings 向量能力。", checked: true },
   { value: "images", label: "Images", description: "测试 /images/generations 图片生成能力。", checked: false },
   { value: "extra_endpoints", label: "Extra Endpoints", description: "测试你手填或预设追加的特殊端点。", checked: false },
-  { value: "capabilities", label: "Capabilities", description: "按模型和端点做更细的文本/视觉能力扫描，最慢，但会额外生成较完整建议和报告。", checked: false },
+  { value: "capabilities", label: "Capabilities", description: "按模型和端点做更细的文本/视觉能力扫描，最慢，但最适合在准备正式接入时打开。", checked: false },
   { value: "docs", label: "Docs", description: "探测 /docs、/openapi.json、/health、/version。", checked: false },
 ];
 
@@ -32,6 +32,8 @@ const progressDetail = document.getElementById("progress-detail");
 const resultsPanel = document.getElementById("results-panel");
 const summaryNode = document.getElementById("summary-chips");
 const rankingNode = document.getElementById("ranking-chips");
+const summaryPanel = document.getElementById("summary-panel");
+const selectionHintNode = document.getElementById("selection-hint");
 const calloutNode = document.getElementById("callout");
 const reportPanel = document.getElementById("report-panel");
 const reportBody = document.getElementById("report-body");
@@ -168,6 +170,21 @@ function summarizeEndpointSupport(endpointSupport) {
   };
 }
 
+function summarizeExtraEndpoints(results) {
+  const endpoints = probeByName(results, "extra_endpoints")?.details?.endpoints || [];
+  const okCount = endpoints.filter((item) => {
+    const statuses = [item.options_status, item.get_status].filter((value) => Number.isFinite(value));
+    return statuses.some((value) => value < 500);
+  }).length;
+  return { total: endpoints.length, okCount };
+}
+
+function summarizeDocs(results) {
+  const endpoints = probeByName(results, "docs")?.details?.endpoints || [];
+  const okCount = endpoints.filter((item) => Number.isFinite(item.status_code) && item.status_code < 500).length;
+  return { total: endpoints.length, okCount };
+}
+
 function extractCardSummary(item) {
   const details = item.details || {};
   const attempts = details.attempts || [];
@@ -201,6 +218,8 @@ function renderCallout(results, payload) {
   const models = probeByName(results, "models")?.details?.rankings || {};
   const endpointSupport = probeByName(results, "capabilities")?.details?.endpoint_support || {};
   const endpointSummary = summarizeEndpointSupport(endpointSupport);
+  const extraSummary = summarizeExtraEndpoints(results);
+  const docsSummary = summarizeDocs(results);
   const chatOk = probeByName(results, "chat_completions")?.ok || endpointSupport["/v1/chat/completions"]?.supported;
   const responsesOk = probeByName(results, "responses")?.ok || endpointSupport["/v1/responses"]?.supported;
   const toolsOk = probeByName(results, "tool_calling")?.ok;
@@ -209,33 +228,53 @@ function renderCallout(results, payload) {
 
   const tips = [];
   if (chatOk && responsesOk) {
-    tips.push("这个网关同时兼容 chat/completions 和 responses，接大多数 IDE/SDK 会更稳。");
+    tips.push("文本主接口同时兼容 chat/completions 和 responses，接老客户端和新 SDK 都比较稳。");
   } else if (chatOk) {
-    tips.push("这个网关至少适合普通聊天、代码问答和传统 chat/completions 客户端。");
+    tips.push("当前更适合接传统 chat/completions 生态，很多 IDE 和旧 SDK 会更稳。");
   } else if (responsesOk) {
-    tips.push("这个网关更偏新版 responses 风格，旧客户端可能不一定直接兼容。");
+    tips.push("当前更偏新版 responses 风格，接新 SDK 或 agent workflow 会更顺手。");
   } else {
-    tips.push("文本主接口没有完全测通，不建议直接接生产 IDE 或 Agent。");
+    tips.push("文本主接口没有完全测通，建议先不要直接上生产。");
   }
   if (toolsOk) {
-    tips.push("Tool calling 可用，适合自动化、函数调用和 agent 工作流。");
+    tips.push("Tool calling 可用，自动化编排、函数调用和 agent 工作流可以重点考虑。");
   }
   if (embeddingsOk) {
-    tips.push("Embeddings 可用，知识库问答、RAG、语义搜索这类工作流也可以考虑。");
+    tips.push("Embeddings 可用，RAG、语义检索和知识库问答可以继续评估。");
   } else {
-    tips.push("Embeddings 不可用时，普通聊天通常还能用，但知识库问答、RAG、语义搜索、文档召回会受影响。");
+    tips.push("Embeddings 不通时，普通聊天通常还能用，但知识库检索类场景要谨慎。");
   }
   if (imagesOk) {
-    tips.push("图片生成接口可用。");
+    tips.push("图片生成接口已测通，适合海报、封面和视觉素材场景。");
+  }
+  if (Array.isArray(models.text) && models.text.length) {
+    tips.push(`建议优先从这些文本模型试起：${models.text.slice(0, 3).join("、")}。`);
   }
   if (endpointSummary.supported.length) {
     tips.push(`细扫通过的端点有：${endpointSummary.supported.join("、")}。`);
   }
-  if (Array.isArray(models.text) && models.text.length) {
-    tips.push(`推荐优先尝试的文本模型：${models.text.slice(0, 3).join("、")}。`);
+  if (extraSummary.total) {
+    tips.push(`额外端点共检查 ${extraSummary.total} 个，其中 ${extraSummary.okCount} 个有响应。`);
+  }
+  if (docsSummary.total) {
+    tips.push(`文档/健康检查端点共检查 ${docsSummary.total} 个，其中 ${docsSummary.okCount} 个有响应。`);
   }
   calloutNode.textContent = tips.join(" ");
-  show(calloutNode, Boolean(tips.length));
+  selectionHintNode.textContent = buildSelectionHint(results);
+  show(summaryPanel, Boolean(tips.length));
+}
+
+function buildSelectionHint(results) {
+  const hasCapabilities = Boolean(probeByName(results, "capabilities"));
+  const hasDocs = Boolean(probeByName(results, "docs"));
+  const hasExtra = Boolean(probeByName(results, "extra_endpoints"));
+  if (hasCapabilities) {
+    return "已开启 Capabilities，以下结论包含模型级细扫。";
+  }
+  if (hasDocs || hasExtra) {
+    return "未开启 Capabilities，以下结论基于主接口加补充端点探测。";
+  }
+  return "快速总结模式，适合先判断这个网关能不能接。";
 }
 
 function buildCapabilitiesReport(results) {
@@ -315,8 +354,11 @@ function updateEstimateHint() {
   const presets = selectedValues("endpoint_preset_groups");
   const extraCount = parseTextareaList(document.getElementById("endpoint-paths").value).length + presetPaths(presets).length;
   const probeMode = document.getElementById("probe-mode").value || "quick";
-  const capabilityTip = enabled.includes("capabilities") ? " 已开启 Capabilities，完成后会附带较完整建议和报告。" : "";
-  estimateHint.textContent = `预计耗时约 ${estimateSeconds(timeout, enabled.length, probeMode, extraCount)} 秒。勾选越多、路径越多，等待越久。${capabilityTip}`;
+  const capabilityTip = enabled.includes("capabilities")
+    ? " 已开启 Capabilities，完成后会附带模型级细扫和完整报告。"
+    : " 不开 Capabilities 也会先给你一版尽量全面的简要总结。";
+  const imageTip = enabled.includes("images") ? " 当前也会测试图片能力。" : " Images 默认关闭，更适合首次快速排查。";
+  estimateHint.textContent = `预计耗时约 ${estimateSeconds(timeout, enabled.length, probeMode, extraCount)} 秒。勾选越多、路径越多，等待越久。${capabilityTip}${imageTip}`;
 }
 
 function collectPayload() {
@@ -376,7 +418,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       errorNode.textContent = error.message || "检测失败";
       show(errorNode, true);
-      show(calloutNode, false);
+      show(summaryPanel, false);
       show(reportPanel, false);
     } finally {
       setLoading(false);

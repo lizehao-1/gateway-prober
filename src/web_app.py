@@ -375,7 +375,7 @@ PAGE_TEMPLATE = """
             <label class="check" title="{{ probe.description }}"><input type="checkbox" name="enabled_probes" value="{{ probe.value }}" {% if probe.value in form.enabled_probes %}checked{% endif %}><span>{{ probe.label }}</span></label>
             {% endfor %}
           </div>
-          <span class="hint">默认关闭 Capabilities 和 Docs，因为它们更细也更慢。勾选 Capabilities 后，页面会额外给出较完整的接入建议、模型判断和可复制报告。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
+          <span class="hint">默认先测最常用的文本能力，Images 默认关闭，避免首次探测过慢。Capabilities 最值得在准备正式接入时打开，因为它会补充模型级细扫、接入建议和完整报告。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
         </label>
         <label>高级预设
           <div class="checks">
@@ -387,7 +387,7 @@ PAGE_TEMPLATE = """
         <div class="actions">
           <button type="submit" id="submitButton">开始探测</button>
           <button type="button" id="cancelButton" class="secondary hidden">终止检测</button>
-          <span class="hint">检测中会实时显示阶段、正在尝试的模型或端点。想重新测，直接改勾选项后再次点击开始探测即可。</span>
+          <span class="hint">检测中会实时显示阶段、正在尝试的模型或端点。结果页会先给整体总结；如果开启 Capabilities，还会追加更完整的决策报告。</span>
         </div>
       </form>
       <p id="notice" class="notice hidden"></p>
@@ -408,7 +408,13 @@ PAGE_TEMPLATE = """
     <section class="panel hidden" id="resultsPanel">
       <div class="summary" id="summaryChips"></div>
       <div class="rankings" id="rankingChips"></div>
-      <div class="notice hidden" id="adviceCallout"></div>
+      <div class="card hidden" id="summaryPanel">
+        <div class="topline">
+          <strong>整体总结</strong>
+          <span class="hint" id="selectionHint"></span>
+        </div>
+        <p class="summary-text" id="adviceBody"></p>
+      </div>
       <div class="card hidden" id="reportPanel">
         <div class="topline">
           <strong>Capabilities 报告</strong>
@@ -495,6 +501,21 @@ PAGE_TEMPLATE = """
       };
     }
 
+    function summarizeExtraEndpoints(results) {
+      const endpoints = probeByName(results, 'extra_endpoints')?.details?.endpoints || [];
+      const okCount = endpoints.filter(item => {
+        const statuses = [item.options_status, item.get_status].filter(value => Number.isFinite(value));
+        return statuses.some(value => value < 500);
+      }).length;
+      return { total: endpoints.length, okCount };
+    }
+
+    function summarizeDocs(results) {
+      const endpoints = probeByName(results, 'docs')?.details?.endpoints || [];
+      const okCount = endpoints.filter(item => Number.isFinite(item.status_code) && item.status_code < 500).length;
+      return { total: endpoints.length, okCount };
+    }
+
     function formatCapabilityModel(model) {
       const endpointSupport = model.details?.endpoint_support || {};
       const passed = Object.entries(endpointSupport)
@@ -515,6 +536,8 @@ PAGE_TEMPLATE = """
       const rankings = probeByName(results, 'models')?.details?.rankings || {};
       const endpointSupport = capabilities?.endpoint_support || {};
       const summary = summarizeEndpointSupport(endpointSupport);
+      const extraSummary = summarizeExtraEndpoints(results);
+      const docsSummary = summarizeDocs(results);
       const chatOk = Boolean(probeByName(results, 'chat_completions')?.ok || endpointSupport['/v1/chat/completions']?.supported);
       const responsesOk = Boolean(probeByName(results, 'responses')?.ok || endpointSupport['/v1/responses']?.supported);
       const toolsOk = Boolean(probeByName(results, 'tool_calling')?.ok);
@@ -523,32 +546,51 @@ PAGE_TEMPLATE = """
       const tips = [];
 
       if (chatOk && responsesOk) {
-        tips.push('文本主接口两套都通，兼容老客户端和新版 SDK 的把握都更大。');
+        tips.push('文本主接口同时兼容 chat/completions 和 responses，接老客户端和新 SDK 都比较稳。');
       } else if (chatOk) {
-        tips.push('更适合接传统 chat/completions 生态，很多 IDE 和旧 SDK 会更稳。');
+        tips.push('当前更适合接传统 chat/completions 生态，很多 IDE 和旧 SDK 会更稳。');
       } else if (responsesOk) {
-        tips.push('更偏新版 responses 风格，接新 SDK 或 agent workflow 会更顺手。');
+        tips.push('当前更偏新版 responses 风格，接新 SDK 或 agent workflow 会更顺手。');
       } else {
-        tips.push('文本主接口没有完全测通，建议先别直接上生产。');
+        tips.push('文本主接口没有完全测通，建议先不要直接上生产。');
       }
       if (toolsOk) {
         tips.push('Tool calling 可用，自动化编排、函数调用和 agent 工作流可以重点考虑。');
       }
       if (embeddingsOk) {
-        tips.push('Embeddings 可用，RAG、语义检索、知识库问答可以继续评估。');
+        tips.push('Embeddings 可用，RAG、语义检索和知识库问答可以继续评估。');
       } else {
         tips.push('Embeddings 不通时，普通聊天通常还能用，但知识库检索类场景要谨慎。');
       }
       if (imagesOk) {
         tips.push('图片生成接口已测通，适合海报、封面和视觉素材场景。');
       }
-      if (summary.supported.length) {
-        tips.push(`已细扫通过的端点有：${summary.supported.join('、')}。`);
-      }
       if (Array.isArray(rankings.text) && rankings.text.length) {
         tips.push(`建议优先从这些文本模型试起：${rankings.text.slice(0, 3).join('、')}。`);
       }
+      if (summary.supported.length) {
+        tips.push(`已细扫通过的端点有：${summary.supported.join('、')}。`);
+      }
+      if (extraSummary.total) {
+        tips.push(`额外端点共检查 ${extraSummary.total} 个，其中 ${extraSummary.okCount} 个有响应。`);
+      }
+      if (docsSummary.total) {
+        tips.push(`文档/健康检查端点共检查 ${docsSummary.total} 个，其中 ${docsSummary.okCount} 个有响应。`);
+      }
       return tips.join(' ');
+    }
+
+    function buildSelectionHint(results) {
+      const hasCapabilities = Boolean(probeByName(results, 'capabilities'));
+      const hasDocs = Boolean(probeByName(results, 'docs'));
+      const hasExtra = Boolean(probeByName(results, 'extra_endpoints'));
+      if (hasCapabilities) {
+        return '已开启 Capabilities，以下结论包含模型级细扫。';
+      }
+      if (hasDocs || hasExtra) {
+        return '未开启 Capabilities，以下结论基于主接口加补充端点探测。';
+      }
+      return '快速总结模式，适合先判断这个网关能不能接。';
     }
 
     function buildCapabilitiesReport(results, baseUrl) {
@@ -592,14 +634,17 @@ PAGE_TEMPLATE = """
     }
 
     function renderAdviceAndReport(results, baseUrl) {
-      const adviceNode = document.getElementById('adviceCallout');
+      const summaryPanel = document.getElementById('summaryPanel');
+      const adviceNode = document.getElementById('adviceBody');
+      const selectionHint = document.getElementById('selectionHint');
       const reportPanel = document.getElementById('reportPanel');
       const reportBody = document.getElementById('reportBody');
       const advice = buildAdvice(results);
       const report = buildCapabilitiesReport(results, baseUrl);
+      selectionHint.textContent = buildSelectionHint(results);
       adviceNode.textContent = advice;
       reportBody.textContent = report;
-      show(adviceNode, Boolean(advice));
+      show(summaryPanel, Boolean(advice));
       show(reportPanel, Boolean(report));
     }
 
@@ -786,7 +831,7 @@ DOCS_TEMPLATE = """
     <h1>Gateway Prober 详细说明</h1>
     <p><a href="/">返回检测页</a></p>
     <h2>1. 现在的检测顺序是什么</h2>
-    <p>按你勾选的项目顺序检测。默认顺序是 Models、Chat、Tools、Responses、Embeddings、Images。Capabilities 和 Docs 默认关闭，因为它们更细也更慢；但如果你勾上 Capabilities，页面会额外生成较完整的接入建议和可复制报告。</p>
+    <p>按你勾选的项目顺序检测。默认顺序是 Models、Chat、Tools、Responses、Embeddings，Images 默认关闭，避免第一次探测就过慢。Capabilities 和 Docs 默认关闭，因为它们更细也更慢；但如果你勾上 Capabilities，页面会额外生成更完整的接入建议、模型判断和可复制报告。</p>
     <p>如果成功拿到 /models，系统会先把模型按用途排序，再优先拿更像主力的模型去测；不是只死盯一个默认模型。某个模型失败时，会自动换下一个候选。</p>
     <h2>2. 为什么有时只写根地址测不到，写到 /v1 才行</h2>
     <p>不少兼容网关实际上只在 <code>/v1</code> 下暴露接口。理论上工具会尝试根地址和 /v1，但有些网关的转发、重写或防火墙规则只允许 <code>/v1/*</code>。遇到这种情况，直接把 Base URL 写成到 <code>/v1</code> 为止会更稳。</p>
