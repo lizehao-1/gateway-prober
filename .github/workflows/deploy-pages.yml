@@ -38,8 +38,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: ./cf-pages
           command: >-
-            pages deploy ./cf-pages
+            pages deploy ./public
             --project-name gateway-prober
             --branch main
             --commit-hash ${{ github.sha }}
