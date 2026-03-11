@@ -6,7 +6,7 @@ const PROBE_OPTIONS = [
   { value: "embeddings", label: "Embeddings", description: "测试 /embeddings 向量能力。", checked: true },
   { value: "images", label: "Images", description: "测试 /images/generations 图片生成能力。", checked: false },
   { value: "extra_endpoints", label: "Extra Endpoints", description: "测试你手填或预设追加的特殊端点。", checked: false },
-  { value: "capabilities", label: "Capabilities", description: "按模型和端点做更细的文本能力扫描，最慢。", checked: false },
+  { value: "capabilities", label: "Capabilities", description: "按模型和端点做更细的文本/视觉能力扫描，最慢，但会额外生成较完整建议和报告。", checked: false },
   { value: "docs", label: "Docs", description: "探测 /docs、/openapi.json、/health、/version。", checked: false },
 ];
 
@@ -156,6 +156,18 @@ function renderRankings(rankings) {
   show(rankingNode, Boolean(html));
 }
 
+function probeByName(results, name) {
+  return (results || []).find((item) => item.name === name) || null;
+}
+
+function summarizeEndpointSupport(endpointSupport) {
+  const entries = Object.entries(endpointSupport || {});
+  return {
+    supported: entries.filter(([, value]) => value?.supported).map(([key]) => key),
+    unsupported: entries.filter(([, value]) => !value?.supported).map(([key]) => key),
+  };
+}
+
 function extractCardSummary(item) {
   const details = item.details || {};
   const attempts = details.attempts || [];
@@ -186,13 +198,14 @@ function renderCards(results) {
 }
 
 function renderCallout(results, payload) {
-  const models = results.find((item) => item.name === "models")?.details?.rankings || {};
-  const endpointSupport = results.find((item) => item.name === "capabilities")?.details?.endpoint_support || {};
-  const chatOk = results.find((item) => item.name === "chat_completions")?.ok || endpointSupport["/v1/chat/completions"]?.supported;
-  const responsesOk = results.find((item) => item.name === "responses")?.ok || endpointSupport["/v1/responses"]?.supported;
-  const toolsOk = results.find((item) => item.name === "tool_calling")?.ok;
-  const embeddingsOk = results.find((item) => item.name === "embeddings")?.ok || endpointSupport["/v1/embeddings"]?.supported;
-  const imagesOk = results.find((item) => item.name === "images")?.ok || endpointSupport["/v1/images/generations"]?.supported;
+  const models = probeByName(results, "models")?.details?.rankings || {};
+  const endpointSupport = probeByName(results, "capabilities")?.details?.endpoint_support || {};
+  const endpointSummary = summarizeEndpointSupport(endpointSupport);
+  const chatOk = probeByName(results, "chat_completions")?.ok || endpointSupport["/v1/chat/completions"]?.supported;
+  const responsesOk = probeByName(results, "responses")?.ok || endpointSupport["/v1/responses"]?.supported;
+  const toolsOk = probeByName(results, "tool_calling")?.ok;
+  const embeddingsOk = probeByName(results, "embeddings")?.ok || endpointSupport["/v1/embeddings"]?.supported;
+  const imagesOk = probeByName(results, "images")?.ok || endpointSupport["/v1/images/generations"]?.supported;
 
   const tips = [];
   if (chatOk && responsesOk) {
@@ -215,6 +228,9 @@ function renderCallout(results, payload) {
   if (imagesOk) {
     tips.push("图片生成接口可用。");
   }
+  if (endpointSummary.supported.length) {
+    tips.push(`细扫通过的端点有：${endpointSummary.supported.join("、")}。`);
+  }
   if (Array.isArray(models.text) && models.text.length) {
     tips.push(`推荐优先尝试的文本模型：${models.text.slice(0, 3).join("、")}。`);
   }
@@ -223,40 +239,37 @@ function renderCallout(results, payload) {
 }
 
 function buildCapabilitiesReport(results) {
-  const capabilities = results.find((item) => item.name === "capabilities")?.details;
-  const modelRanks = results.find((item) => item.name === "models")?.details?.rankings || {};
+  const capabilities = probeByName(results, "capabilities")?.details;
+  const modelRanks = probeByName(results, "models")?.details?.rankings || {};
   const lines = [];
   if (!capabilities) {
     return "";
   }
   const endpointSupport = capabilities.endpoint_support || {};
   const models = capabilities.models || [];
-  const supportedEndpoints = Object.entries(endpointSupport)
-    .filter(([, value]) => value.supported)
-    .map(([key]) => key);
-  const unsupportedEndpoints = Object.entries(endpointSupport)
-    .filter(([, value]) => !value.supported)
-    .map(([key]) => key);
+  const endpointSummary = summarizeEndpointSupport(endpointSupport);
 
   lines.push("Gateway 完整报告");
   lines.push("");
   lines.push(`Base URL: ${capabilities.base_url || "-"}`);
   lines.push("");
   lines.push("一、整体结论");
-  if (supportedEndpoints.length) {
-    lines.push(`- 已测通端点：${supportedEndpoints.join("、")}`);
-  }
-  if (unsupportedEndpoints.length) {
-    lines.push(`- 未测通端点：${unsupportedEndpoints.join("、")}`);
-  }
+  lines.push(`- 已测通端点：${endpointSummary.supported.length ? endpointSummary.supported.join("、") : "无"}`);
+  lines.push(`- 未测通端点：${endpointSummary.unsupported.length ? endpointSummary.unsupported.join("、") : "无"}`);
   if (Array.isArray(modelRanks.text) && modelRanks.text.length) {
     lines.push(`- 推荐优先尝试的文本模型：${modelRanks.text.slice(0, 5).join("、")}`);
+  }
+  if (Array.isArray(modelRanks.vision) && modelRanks.vision.length) {
+    lines.push(`- 推荐优先尝试的视觉模型：${modelRanks.vision.slice(0, 3).join("、")}`);
   }
   if (Array.isArray(modelRanks.embeddings) && modelRanks.embeddings.length) {
     lines.push(`- 推荐优先尝试的 embedding 模型：${modelRanks.embeddings.slice(0, 3).join("、")}`);
   }
   lines.push("");
-  lines.push("二、模型结论");
+  lines.push("二、接入建议");
+  lines.push(`- ${calloutNode.textContent || "未形成明确建议。"} `);
+  lines.push("");
+  lines.push("三、模型结论");
   for (const item of models.slice(0, 10)) {
     const okEndpoints = Object.entries(item.details?.endpoint_support || {})
       .filter(([, info]) => info.text_supported || info.vision_supported)
@@ -269,18 +282,18 @@ function buildCapabilitiesReport(results) {
     if (badEndpoints.length) lines.push(`  失败端点：${badEndpoints.join("、")}`);
   }
   lines.push("");
-  lines.push("三、接入建议");
-  if (supportedEndpoints.includes("/v1/chat/completions") && supportedEndpoints.includes("/v1/responses")) {
+  lines.push("四、下一步建议");
+  if (endpointSummary.supported.includes("/v1/chat/completions") && endpointSummary.supported.includes("/v1/responses")) {
     lines.push("- 这个网关同时兼容 chat/completions 和 responses，接 IDE 或 SDK 都比较稳。");
-  } else if (supportedEndpoints.includes("/v1/chat/completions")) {
+  } else if (endpointSummary.supported.includes("/v1/chat/completions")) {
     lines.push("- 更推荐接传统 chat/completions 客户端。");
-  } else if (supportedEndpoints.includes("/v1/responses")) {
+  } else if (endpointSummary.supported.includes("/v1/responses")) {
     lines.push("- 更推荐接新版 responses 风格客户端。");
   }
-  if (!supportedEndpoints.includes("/v1/embeddings")) {
+  if (!endpointSummary.supported.includes("/v1/embeddings")) {
     lines.push("- Embeddings 未测通，不建议直接用于知识库问答、RAG、语义搜索。");
   }
-  if (!supportedEndpoints.includes("/v1/images/generations")) {
+  if (!endpointSummary.supported.includes("/v1/images/generations")) {
     lines.push("- 图片生成未测通，更适合文本场景。");
   }
   return lines.join("\n");
@@ -302,7 +315,8 @@ function updateEstimateHint() {
   const presets = selectedValues("endpoint_preset_groups");
   const extraCount = parseTextareaList(document.getElementById("endpoint-paths").value).length + presetPaths(presets).length;
   const probeMode = document.getElementById("probe-mode").value || "quick";
-  estimateHint.textContent = `预计耗时约 ${estimateSeconds(timeout, enabled.length, probeMode, extraCount)} 秒。勾选越多、路径越多，等待越久。`;
+  const capabilityTip = enabled.includes("capabilities") ? " 已开启 Capabilities，完成后会附带较完整建议和报告。" : "";
+  estimateHint.textContent = `预计耗时约 ${estimateSeconds(timeout, enabled.length, probeMode, extraCount)} 秒。勾选越多、路径越多，等待越久。${capabilityTip}`;
 }
 
 function collectPayload() {

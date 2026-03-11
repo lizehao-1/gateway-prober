@@ -1,6 +1,14 @@
 ﻿const DEFAULT_TIMEOUT = 20;
 
 const DEFAULT_PROBES = ["models", "chat_completions", "tool_calling", "responses", "embeddings"];
+const DEFAULT_ENDPOINT_CANDIDATES = {
+  chat: ["/v1/chat/completions"],
+  responses: ["/v1/responses", "/v1/responses/compact"],
+  embeddings: ["/v1/embeddings"],
+  images: ["/v1/images/generations"],
+};
+const QUICK_API_ROOT_CANDIDATES = ["/v1", ""];
+const DEEP_API_ROOT_CANDIDATES = ["/v1", "", "/openai/v1", "/api/v1", "/api/openai/v1"];
 const DEFAULT_TEXT_MODELS = ["gpt-4.1", "gpt-4o", "claude-sonnet-4-5", "deepseek-chat"];
 const DEFAULT_VISION_MODELS = ["gpt-4o", "gpt-4.1", "claude-sonnet-4-5"];
 const DEFAULT_EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small", "text-embedding-ada-002"];
@@ -57,6 +65,15 @@ function dedupeStrings(items) {
     output.push(normalized);
   }
   return output;
+}
+
+function matchesAnySuffix(path, suffixes) {
+  for (const suffix of suffixes) {
+    if (String(path || "").endsWith(suffix)) {
+      return suffix;
+    }
+  }
+  return null;
 }
 
 function extractVersionScore(modelId) {
@@ -160,9 +177,30 @@ class GatewayProber {
     this.configuredVisionModels = options.visionModels || [];
     this.enabledProbes = Array.isArray(options.enabledProbes) && options.enabledProbes.length ? options.enabledProbes : DEFAULT_PROBES.slice();
     this.endpointHints = options.endpointHints || [];
+    this.probeMode = options.probeMode === "deep" ? "deep" : "quick";
+    this.endpointStrategy = options.endpointStrategy === "custom_only" ? "custom_only" : "append";
+    this.apiRoots = this.resolveApiRoots();
+    this.endpointCandidates = this.resolveEndpointCandidates();
+    this.chatEndpoint = this.pickEndpoint("chat");
+    this.responsesEndpoint = this.pickEndpoint("responses");
+    this.embeddingsEndpoint = this.pickEndpoint("embeddings");
+    this.imagesEndpoint = this.pickEndpoint("images");
   }
 
-  async request(method, path, body) {
+  async request(method, pathOrUrl, body) {
+    const raw = String(pathOrUrl || "").trim();
+    if (!raw) {
+      throw new Error("Missing request path");
+    }
+    const url = /^https?:\/\//i.test(raw) ? raw : this.toAbsoluteUrl(raw);
+    return fetchWithTimeout(url, {
+      method,
+      headers: this.headers,
+      body: body ? JSON.stringify(body) : undefined,
+    }, this.timeoutMs);
+  }
+
+  toAbsoluteUrl(path) {
     let normalizedPath = String(path || "").trim();
     if (!normalizedPath.startsWith("/")) {
       normalizedPath = `/${normalizedPath}`;
@@ -171,11 +209,102 @@ class GatewayProber {
     if (this.baseUrl.endsWith("/v1") && normalizedPath.startsWith("/v1/")) {
       url = `${this.baseUrl}${normalizedPath.slice(3)}`;
     }
-    return fetchWithTimeout(url, {
-      method,
-      headers: this.headers,
-      body: body ? JSON.stringify(body) : undefined,
-    }, this.timeoutMs);
+    return url;
+  }
+
+  joinEndpoint(basePath, endpointPath) {
+    const normalizedBase = String(basePath || "").replace(/\/+$/, "");
+    let normalizedEndpoint = String(endpointPath || "").trim();
+    if (!normalizedEndpoint) {
+      return normalizedBase || "/";
+    }
+    if (!normalizedEndpoint.startsWith("/")) {
+      normalizedEndpoint = `/${normalizedEndpoint}`;
+    }
+    if (!normalizedBase) {
+      return normalizedEndpoint;
+    }
+    if (normalizedBase.endsWith("/v1") && normalizedEndpoint.startsWith("/v1/")) {
+      return `${normalizedBase}${normalizedEndpoint.slice(3)}`;
+    }
+    return `${normalizedBase}${normalizedEndpoint}`;
+  }
+
+  kindForPath(path) {
+    const lowered = String(path || "").toLowerCase();
+    if (lowered.endsWith("/chat/completions")) return "chat";
+    if (lowered.endsWith("/responses") || lowered.endsWith("/responses/compact")) return "responses";
+    if (lowered.endsWith("/embeddings")) return "embeddings";
+    if (lowered.endsWith("/images/generations")) return "images";
+    return "responses";
+  }
+
+  resolveApiRoots() {
+    const parsed = new URL(this.baseUrl);
+    const path = parsed.pathname.replace(/\/+$/, "");
+    const allSuffixes = Object.values(DEFAULT_ENDPOINT_CANDIDATES).flat();
+    const matchedSuffix = matchesAnySuffix(path, allSuffixes);
+    if (matchedSuffix) {
+      const rootPath = path.slice(0, -matchedSuffix.length) || "";
+      const seed = `${parsed.origin}${rootPath}`.replace(/\/+$/, "");
+      const candidates = [seed];
+      if (!seed.endsWith("/v1")) {
+        candidates.push(`${seed}/v1`.replace(/\/+$/, ""));
+      }
+      return dedupeStrings(candidates.filter(Boolean));
+    }
+    const candidatePaths = this.probeMode === "deep" ? DEEP_API_ROOT_CANDIDATES : QUICK_API_ROOT_CANDIDATES;
+    const roots = [];
+    if (path) {
+      roots.push(`${parsed.origin}${path}`.replace(/\/+$/, ""));
+    }
+    for (const candidatePath of candidatePaths) {
+      roots.push(`${parsed.origin}${candidatePath}`.replace(/\/+$/, ""));
+    }
+    return dedupeStrings(roots.filter(Boolean));
+  }
+
+  resolveEndpointCandidates() {
+    const candidates = [];
+    const addCandidate = (url, label, kind) => {
+      const normalized = String(url || "").replace(/\/+$/, "");
+      if (!normalized) return;
+      if (candidates.some((item) => item.url === normalized)) return;
+      candidates.push({ url: normalized, label, kind });
+    };
+
+    if (this.endpointStrategy !== "custom_only" || !this.endpointHints.length) {
+      for (const root of this.apiRoots) {
+        const parsed = new URL(root);
+        const rootPath = parsed.pathname.replace(/\/+$/, "");
+        for (const [kind, suffixes] of Object.entries(DEFAULT_ENDPOINT_CANDIDATES)) {
+          for (const suffix of suffixes) {
+            const fullPath = this.joinEndpoint(rootPath, suffix);
+            addCandidate(`${parsed.origin}${fullPath}`, fullPath, kind);
+          }
+        }
+      }
+    }
+
+    for (const hint of dedupeStrings(this.endpointHints)) {
+      if (/^https?:\/\//i.test(hint)) {
+        const parsed = new URL(hint);
+        const hintPath = parsed.pathname.replace(/\/+$/, "") || hint;
+        addCandidate(hint, hintPath, this.kindForPath(hintPath));
+        continue;
+      }
+      for (const root of this.apiRoots) {
+        const parsed = new URL(root);
+        const rootPath = parsed.pathname.replace(/\/+$/, "");
+        const fullPath = this.joinEndpoint(rootPath, hint);
+        addCandidate(`${parsed.origin}${fullPath}`, fullPath, this.kindForPath(fullPath));
+      }
+    }
+    return candidates;
+  }
+
+  pickEndpoint(kind) {
+    return this.endpointCandidates.find((item) => item.kind === kind) || null;
   }
 
   async runProbe(name, fn) {
@@ -295,38 +424,59 @@ class GatewayProber {
   }
 
   async probeModels() {
-    const response = await this.request("GET", "/v1/models");
-    const details = { status_code: response.status };
-    if (!response.ok) {
-      details.body = summarizeErrorBody(await response.text());
-      return { ok: false, status_code: response.status, summary: "failed to list models", details };
+    const attempts = [];
+    for (const root of this.apiRoots) {
+      const modelsUrl = `${root}/models`;
+      const response = await this.request("GET", modelsUrl);
+      const attempt = { url: modelsUrl, status_code: response.status };
+      if (!response.ok) {
+        attempt.body = summarizeErrorBody(await response.text());
+        attempts.push(attempt);
+        continue;
+      }
+      const payload = await response.json();
+      this.models = payload.data || [];
+      attempt.model_count = this.models.length;
+      attempts.push(attempt);
+      return {
+        ok: true,
+        status_code: response.status,
+        summary: `listed ${this.models.length} model(s)`,
+        details: {
+          url: modelsUrl,
+          api_roots: this.apiRoots,
+          attempts,
+          model_count: this.models.length,
+          model_ids: this.models.map((item) => item.id),
+          rankings: {
+            text: this.pickTextProbeModels(),
+            vision: this.pickVisionProbeModels(),
+            embeddings: this.pickEmbeddingProbeModels(),
+            images: this.pickImageGenerationModels(),
+          },
+        },
+      };
     }
-    const payload = await response.json();
-    this.models = payload.data || [];
-    details.model_count = this.models.length;
-    details.model_ids = this.models.map((item) => item.id);
-    details.rankings = {
-      text: this.pickTextProbeModels(),
-      vision: this.pickVisionProbeModels(),
-      embeddings: this.pickEmbeddingProbeModels(),
-      images: this.pickImageGenerationModels(),
-    };
-    return { ok: true, status_code: response.status, summary: `listed ${this.models.length} model(s)`, details };
+    return { ok: false, status_code: attempts.at(-1)?.status_code ?? null, summary: "failed to list models", details: { api_roots: this.apiRoots, attempts } };
   }
 
   async probeChat() {
+    const endpoint = this.chatEndpoint;
+    if (!endpoint) {
+      return { ok: false, status_code: null, summary: "chat endpoint not configured", details: {} };
+    }
     const candidateModels = this.pickTextProbeModels();
     if (!candidateModels.length) {
       return { ok: false, status_code: null, summary: "no text model found", details: {} };
     }
     const result = await this.tryModelCandidates(candidateModels, async (model) => {
-      const response = await this.request("POST", "/v1/chat/completions", {
+      const response = await this.request("POST", endpoint.url, {
         model,
         messages: [{ role: "user", content: "Reply with exactly: OK_CHAT" }],
         temperature: 0,
         max_tokens: 20,
       });
-      const details = { model, status_code: response.status, endpoint: "/v1/chat/completions", url: `${this.baseUrl}/v1/chat/completions` };
+      const details = { model, status_code: response.status, endpoint: endpoint.label, url: endpoint.url };
       if (!response.ok) {
         details.body = summarizeErrorBody(await response.text());
         return { ok: false, status_code: response.status, details, stop_retry: this.shouldStopRetry(response.status, details.body) };
@@ -338,7 +488,7 @@ class GatewayProber {
       return { ok: content === "OK_CHAT", status_code: response.status, details };
     });
     if (!result.ok) {
-      return { ok: false, status_code: result.status_code, summary: "chat/completions failed", details: { candidate_models: candidateModels, attempts: result.attempts } };
+      return { ok: false, status_code: result.status_code, summary: "chat/completions failed", details: { endpoint: endpoint.label, url: endpoint.url, candidate_models: candidateModels, attempts: result.attempts } };
     }
     return {
       ok: true,
@@ -349,12 +499,16 @@ class GatewayProber {
   }
 
   async probeTools() {
+    const endpoint = this.chatEndpoint;
+    if (!endpoint) {
+      return { ok: false, status_code: null, summary: "chat endpoint not configured", details: {} };
+    }
     const candidateModels = this.pickTextProbeModels();
     if (!candidateModels.length) {
       return { ok: false, status_code: null, summary: "no text model found", details: {} };
     }
     const result = await this.tryModelCandidates(candidateModels, async (model) => {
-      const response = await this.request("POST", "/v1/chat/completions", {
+      const response = await this.request("POST", endpoint.url, {
         model,
         messages: [{ role: "user", content: 'Use the tool named get_status with argument {"asset":"equity"}.' }],
         tools: [
@@ -375,7 +529,7 @@ class GatewayProber {
         temperature: 0,
         max_tokens: 80,
       });
-      const details = { model, status_code: response.status, endpoint: "/v1/chat/completions", url: `${this.baseUrl}/v1/chat/completions` };
+      const details = { model, status_code: response.status, endpoint: endpoint.label, url: endpoint.url };
       if (!response.ok) {
         details.body = summarizeErrorBody(await response.text());
         return { ok: false, status_code: response.status, details, stop_retry: this.shouldStopRetry(response.status, details.body) };
@@ -386,7 +540,7 @@ class GatewayProber {
       return { ok: Boolean(toolCalls[0]?.function?.name === "get_status"), status_code: response.status, details };
     });
     if (!result.ok) {
-      return { ok: false, status_code: result.status_code, summary: "tool calling failed", details: { candidate_models: candidateModels, attempts: result.attempts } };
+      return { ok: false, status_code: result.status_code, summary: "tool calling failed", details: { endpoint: endpoint.label, url: endpoint.url, candidate_models: candidateModels, attempts: result.attempts } };
     }
     return {
       ok: true,
@@ -397,17 +551,21 @@ class GatewayProber {
   }
 
   async probeResponses() {
+    const endpoint = this.responsesEndpoint;
+    if (!endpoint) {
+      return { ok: false, status_code: null, summary: "responses endpoint not configured", details: {} };
+    }
     const candidateModels = this.pickTextProbeModels();
     if (!candidateModels.length) {
       return { ok: false, status_code: null, summary: "no text model found", details: {} };
     }
     const result = await this.tryModelCandidates(candidateModels, async (model) => {
-      const response = await this.request("POST", "/v1/responses", {
+      const response = await this.request("POST", endpoint.url, {
         model,
         input: "Reply with exactly: OK_RESPONSES",
         max_output_tokens: 20,
       });
-      const details = { model, status_code: response.status, endpoint: "/v1/responses", url: `${this.baseUrl}/v1/responses` };
+      const details = { model, status_code: response.status, endpoint: endpoint.label, url: endpoint.url };
       if (!response.ok) {
         details.body = summarizeErrorBody(await response.text());
         return { ok: false, status_code: response.status, details, stop_retry: this.shouldStopRetry(response.status, details.body) };
@@ -426,7 +584,7 @@ class GatewayProber {
       return { ok: outputText.includes("OK_RESPONSES"), status_code: response.status, details };
     });
     if (!result.ok) {
-      return { ok: false, status_code: result.status_code, summary: "responses API failed", details: { candidate_models: candidateModels, attempts: result.attempts } };
+      return { ok: false, status_code: result.status_code, summary: "responses API failed", details: { endpoint: endpoint.label, url: endpoint.url, candidate_models: candidateModels, attempts: result.attempts } };
     }
     return {
       ok: true,
@@ -437,13 +595,17 @@ class GatewayProber {
   }
 
   async probeEmbeddings() {
+    const endpoint = this.embeddingsEndpoint;
+    if (!endpoint) {
+      return { ok: false, status_code: null, summary: "embeddings endpoint not configured", details: {} };
+    }
     const candidateModels = this.pickEmbeddingProbeModels();
     const result = await this.tryModelCandidates(candidateModels, async (model) => {
-      const response = await this.request("POST", "/v1/embeddings", {
+      const response = await this.request("POST", endpoint.url, {
         model,
         input: "macro rotation",
       });
-      const details = { model, status_code: response.status, endpoint: "/v1/embeddings", url: `${this.baseUrl}/v1/embeddings` };
+      const details = { model, status_code: response.status, endpoint: endpoint.label, url: endpoint.url };
       if (!response.ok) {
         details.body = summarizeErrorBody(await response.text());
         return { ok: false, status_code: response.status, details, stop_retry: this.shouldStopRetry(response.status, details.body) };
@@ -454,7 +616,7 @@ class GatewayProber {
       return { ok: Array.isArray(vector) && vector.length > 0, status_code: response.status, details };
     });
     if (!result.ok) {
-      return { ok: false, status_code: result.status_code, summary: "embeddings failed", details: { candidate_models: candidateModels, attempts: result.attempts } };
+      return { ok: false, status_code: result.status_code, summary: "embeddings failed", details: { endpoint: endpoint.label, url: endpoint.url, candidate_models: candidateModels, attempts: result.attempts } };
     }
     return {
       ok: true,
@@ -465,17 +627,21 @@ class GatewayProber {
   }
 
   async probeImages() {
+    const endpoint = this.imagesEndpoint;
+    if (!endpoint) {
+      return { ok: false, status_code: null, summary: "image endpoint not configured", details: {} };
+    }
     const candidateModels = this.pickImageGenerationModels();
     if (!candidateModels.length) {
       return { ok: false, status_code: null, summary: "no image model found", details: {} };
     }
     const result = await this.tryModelCandidates(candidateModels, async (model) => {
-      const response = await this.request("POST", "/v1/images/generations", {
+      const response = await this.request("POST", endpoint.url, {
         model,
         prompt: "A red square on white background",
         size: "256x256",
       });
-      const details = { model, status_code: response.status, endpoint: "/v1/images/generations", url: `${this.baseUrl}/v1/images/generations` };
+      const details = { model, status_code: response.status, endpoint: endpoint.label, url: endpoint.url };
       if (!response.ok) {
         details.body = summarizeErrorBody(await response.text());
         return { ok: false, status_code: response.status, details, stop_retry: this.shouldStopRetry(response.status, details.body) };
@@ -486,7 +652,7 @@ class GatewayProber {
       return { ok: Boolean(first.b64_json || first.url), status_code: response.status, details };
     });
     if (!result.ok) {
-      return { ok: false, status_code: result.status_code, summary: "image generation failed", details: { candidate_models: candidateModels, attempts: result.attempts } };
+      return { ok: false, status_code: result.status_code, summary: "image generation failed", details: { endpoint: endpoint.label, url: endpoint.url, candidate_models: candidateModels, attempts: result.attempts } };
     }
     return {
       ok: true,
@@ -497,11 +663,18 @@ class GatewayProber {
   }
 
   async probeCapabilities() {
-    const endpointSupport = {
-      "/v1/chat/completions": { kind: "chat", url: `${this.baseUrl}/v1/chat/completions`, supported: false, text_supported: false, vision_supported: false },
-      "/v1/responses": { kind: "responses", url: `${this.baseUrl}/v1/responses`, supported: false, text_supported: false, vision_supported: false },
-      "/v1/embeddings": { kind: "embeddings", url: `${this.baseUrl}/v1/embeddings`, supported: false, text_supported: false, vision_supported: false },
-      "/v1/images/generations": { kind: "images", url: `${this.baseUrl}/v1/images/generations`, supported: false, text_supported: false, vision_supported: false },
+    const endpointSupport = {};
+    const ensureEndpoint = (entry) => {
+      if (!endpointSupport[entry.label]) {
+        endpointSupport[entry.label] = {
+          url: entry.url,
+          kind: entry.kind,
+          supported: false,
+          text_supported: false,
+          vision_supported: false,
+        };
+      }
+      return endpointSupport[entry.label];
     };
     const models = [];
     for (const model of this.pickTextProbeModels()) {
@@ -509,27 +682,30 @@ class GatewayProber {
       let textSupported = false;
       let lastStatus = null;
       let lastBody = "";
-      const checks = [
-        ["/v1/chat/completions", { model, messages: [{ role: "user", content: "Reply with exactly: OK_TEXT" }], max_tokens: 12 }],
-        ["/v1/responses", { model, input: "Reply with exactly: OK_TEXT", max_output_tokens: 12 }],
-        ["/v1/embeddings", { model, input: "macro rotation" }],
-        ["/v1/images/generations", { model, prompt: "A red square on white background", size: "256x256" }],
-      ];
-      for (const [path, body] of checks) {
-        const response = await this.request("POST", path, body);
-        perEndpoint[path] = {
-          url: `${this.baseUrl}${path}`,
+      for (const endpoint of this.endpointCandidates) {
+        const body = endpoint.kind === "chat"
+          ? { model, messages: [{ role: "user", content: "Reply with exactly: OK_TEXT" }], max_tokens: 12 }
+          : endpoint.kind === "responses"
+            ? { model, input: "Reply with exactly: OK_TEXT", max_output_tokens: 12 }
+            : endpoint.kind === "embeddings"
+              ? { model, input: "macro rotation" }
+              : { model, prompt: "A red square on white background", size: "256x256" };
+        const response = await this.request("POST", endpoint.url, body);
+        const bodyText = summarizeErrorBody(await response.text());
+        perEndpoint[endpoint.label] = {
+          url: endpoint.url,
           status_code: response.status,
           text_supported: response.ok,
           vision_supported: false,
         };
+        const info = ensureEndpoint(endpoint);
         if (response.ok) {
-          endpointSupport[path].supported = true;
-          endpointSupport[path].text_supported = true;
           textSupported = true;
+          info.supported = true;
+          info.text_supported = true;
         }
         lastStatus = response.status;
-        lastBody = summarizeErrorBody(await response.text());
+        lastBody = bodyText;
       }
       models.push({
         name: model,
@@ -544,12 +720,73 @@ class GatewayProber {
         },
       });
     }
+
+    for (const model of this.pickVisionProbeModels()) {
+      const perEndpoint = {};
+      let visionSupported = false;
+      let lastStatus = null;
+      let lastBody = "";
+      for (const endpoint of this.endpointCandidates.filter((item) => item.kind === "chat" || item.kind === "responses")) {
+        const body = endpoint.kind === "chat"
+          ? {
+            model,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: "What color is this pixel? Reply with one word." },
+                { type: "image_url", image_url: { url: "data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=" } },
+              ],
+            }],
+            max_tokens: 16,
+          }
+          : {
+            model,
+            input: [{
+              role: "user",
+              content: [
+                { type: "input_text", text: "What color is this pixel? Reply with one word." },
+                { type: "input_image", image_url: "data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=" },
+              ],
+            }],
+            max_output_tokens: 16,
+          };
+        const response = await this.request("POST", endpoint.url, body);
+        const bodyText = summarizeErrorBody(await response.text());
+        perEndpoint[endpoint.label] = {
+          url: endpoint.url,
+          status_code: response.status,
+          text_supported: false,
+          vision_supported: response.ok,
+        };
+        const info = ensureEndpoint(endpoint);
+        if (response.ok) {
+          visionSupported = true;
+          info.supported = true;
+          info.vision_supported = true;
+        }
+        lastStatus = response.status;
+        lastBody = bodyText;
+      }
+      models.push({
+        name: model,
+        kind: "vision",
+        ok: visionSupported,
+        status_code: lastStatus,
+        summary: visionSupported ? "vision probing passed" : "vision probing failed",
+        details: {
+          capabilities: { text: null, vision: visionSupported },
+          endpoint_support: perEndpoint,
+          last_error_body: visionSupported ? "" : lastBody,
+        },
+      });
+    }
     return {
       ok: models.some((item) => item.ok),
       status_code: null,
       summary: "capabilities scan completed",
       details: {
         base_url: this.baseUrl,
+        endpoint_candidates: this.endpointCandidates,
         endpoint_support: endpointSupport,
         models,
       },
@@ -560,7 +797,7 @@ class GatewayProber {
     const endpoints = [];
     for (const path of ["/docs", "/openapi.json", "/health", "/version"]) {
       try {
-        const response = await this.request("GET", path);
+        const response = await this.request("GET", `${this.baseUrl}${path}`);
         endpoints.push({
           path,
           status_code: response.status,
@@ -585,17 +822,19 @@ class GatewayProber {
   async probeExtraEndpoints() {
     const endpoints = [];
     for (const hint of dedupeStrings(this.endpointHints)) {
-      let path = hint;
-      if (!path.startsWith("http://") && !path.startsWith("https://")) {
-        path = path.startsWith("/") ? path : `/${path}`;
+      let url = hint;
+      if (!/^https?:\/\//i.test(hint)) {
+        const root = this.apiRoots[0] || this.baseUrl;
+        const parsed = new URL(root);
+        const fullPath = this.joinEndpoint(parsed.pathname.replace(/\/+$/, ""), hint);
+        url = `${parsed.origin}${fullPath}`;
       }
-      const url = path.startsWith("http://") || path.startsWith("https://") ? path : `${this.baseUrl}${path}`;
       const entry = { path: hint, url };
       try {
-        let response = await this.request("OPTIONS", path, null);
+        let response = await this.request("OPTIONS", url, null);
         entry.options_status = response.status;
         if (response.status >= 400) {
-          response = await this.request("GET", path, null);
+          response = await this.request("GET", url, null);
           entry.get_status = response.status;
           entry.content_type = response.headers.get("content-type") || "";
         } else {
@@ -649,6 +888,8 @@ export async function onRequestPost(context) {
   const textModels = parseTextareaList(payload.text_models || "");
   const visionModels = parseTextareaList(payload.vision_models || "");
   const endpointHints = parseTextareaList(payload.endpoint_paths || "");
+  const probeMode = String(payload.probe_mode || "quick");
+  const endpointStrategy = String(payload.endpoint_strategy || "append");
 
   if (!baseUrl || !apiKey) {
     return json({ error: "Base URL 和 API Key 都是必填。" }, 400);
@@ -660,11 +901,17 @@ export async function onRequestPost(context) {
     return json({ error: "Timeout must be between 1 and 120 seconds" }, 400);
   }
 
+  const mergedProbes = endpointHints.length && !enabledProbes.includes("extra_endpoints")
+    ? enabledProbes.concat(["extra_endpoints"])
+    : enabledProbes;
+
   const prober = new GatewayProber(baseUrl, apiKey, timeout, {
-    enabledProbes,
+    enabledProbes: mergedProbes,
     textModels,
     visionModels,
     endpointHints,
+    probeMode,
+    endpointStrategy,
   });
   const results = await prober.run();
   return json({ results, summary: summarizeResults(results) });

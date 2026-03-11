@@ -375,7 +375,7 @@ PAGE_TEMPLATE = """
             <label class="check" title="{{ probe.description }}"><input type="checkbox" name="enabled_probes" value="{{ probe.value }}" {% if probe.value in form.enabled_probes %}checked{% endif %}><span>{{ probe.label }}</span></label>
             {% endfor %}
           </div>
-          <span class="hint">默认关闭 Capabilities 和 Docs，因为它们更细也更慢。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
+          <span class="hint">默认关闭 Capabilities 和 Docs，因为它们更细也更慢。勾选 Capabilities 后，页面会额外给出较完整的接入建议、模型判断和可复制报告。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
         </label>
         <label>高级预设
           <div class="checks">
@@ -408,6 +408,14 @@ PAGE_TEMPLATE = """
     <section class="panel hidden" id="resultsPanel">
       <div class="summary" id="summaryChips"></div>
       <div class="rankings" id="rankingChips"></div>
+      <div class="notice hidden" id="adviceCallout"></div>
+      <div class="card hidden" id="reportPanel">
+        <div class="topline">
+          <strong>Capabilities 报告</strong>
+          <button type="button" id="copyReportButton">复制报告</button>
+        </div>
+        <pre id="reportBody"></pre>
+      </div>
       <div class="cards" id="resultsCards"></div>
     </section>
   </main>
@@ -475,6 +483,126 @@ PAGE_TEMPLATE = """
       show(el, Boolean(html));
     }
 
+    function probeByName(results, name) {
+      return (results || []).find(item => item.name === name) || null;
+    }
+
+    function summarizeEndpointSupport(endpointSupport) {
+      const entries = Object.entries(endpointSupport || {});
+      return {
+        supported: entries.filter(([, value]) => value && value.supported).map(([key]) => key),
+        unsupported: entries.filter(([, value]) => !value || !value.supported).map(([key]) => key),
+      };
+    }
+
+    function formatCapabilityModel(model) {
+      const endpointSupport = model.details?.endpoint_support || {};
+      const passed = Object.entries(endpointSupport)
+        .filter(([, info]) => info && (info.text_supported || info.vision_supported))
+        .map(([key, info]) => `${key}(${info.status_code ?? '-'})`);
+      const failed = Object.entries(endpointSupport)
+        .filter(([, info]) => info && !info.text_supported && !info.vision_supported)
+        .map(([key, info]) => `${key}(${info.status_code ?? '-'})`);
+      const lines = [`- ${model.name}：${model.ok ? '可用' : '暂不稳定'}`];
+      if (passed.length) lines.push(`  可用端点：${passed.join('、')}`);
+      if (failed.length) lines.push(`  失败端点：${failed.join('、')}`);
+      if (model.details?.last_error_body) lines.push(`  最近报错：${model.details.last_error_body}`);
+      return lines;
+    }
+
+    function buildAdvice(results) {
+      const capabilities = probeByName(results, 'capabilities')?.details || null;
+      const rankings = probeByName(results, 'models')?.details?.rankings || {};
+      const endpointSupport = capabilities?.endpoint_support || {};
+      const summary = summarizeEndpointSupport(endpointSupport);
+      const chatOk = Boolean(probeByName(results, 'chat_completions')?.ok || endpointSupport['/v1/chat/completions']?.supported);
+      const responsesOk = Boolean(probeByName(results, 'responses')?.ok || endpointSupport['/v1/responses']?.supported);
+      const toolsOk = Boolean(probeByName(results, 'tool_calling')?.ok);
+      const embeddingsOk = Boolean(probeByName(results, 'embeddings')?.ok || endpointSupport['/v1/embeddings']?.supported);
+      const imagesOk = Boolean(probeByName(results, 'images')?.ok || endpointSupport['/v1/images/generations']?.supported);
+      const tips = [];
+
+      if (chatOk && responsesOk) {
+        tips.push('文本主接口两套都通，兼容老客户端和新版 SDK 的把握都更大。');
+      } else if (chatOk) {
+        tips.push('更适合接传统 chat/completions 生态，很多 IDE 和旧 SDK 会更稳。');
+      } else if (responsesOk) {
+        tips.push('更偏新版 responses 风格，接新 SDK 或 agent workflow 会更顺手。');
+      } else {
+        tips.push('文本主接口没有完全测通，建议先别直接上生产。');
+      }
+      if (toolsOk) {
+        tips.push('Tool calling 可用，自动化编排、函数调用和 agent 工作流可以重点考虑。');
+      }
+      if (embeddingsOk) {
+        tips.push('Embeddings 可用，RAG、语义检索、知识库问答可以继续评估。');
+      } else {
+        tips.push('Embeddings 不通时，普通聊天通常还能用，但知识库检索类场景要谨慎。');
+      }
+      if (imagesOk) {
+        tips.push('图片生成接口已测通，适合海报、封面和视觉素材场景。');
+      }
+      if (summary.supported.length) {
+        tips.push(`已细扫通过的端点有：${summary.supported.join('、')}。`);
+      }
+      if (Array.isArray(rankings.text) && rankings.text.length) {
+        tips.push(`建议优先从这些文本模型试起：${rankings.text.slice(0, 3).join('、')}。`);
+      }
+      return tips.join(' ');
+    }
+
+    function buildCapabilitiesReport(results, baseUrl) {
+      const capabilities = probeByName(results, 'capabilities')?.details || null;
+      if (!capabilities) {
+        return '';
+      }
+      const rankings = probeByName(results, 'models')?.details?.rankings || {};
+      const endpointSummary = summarizeEndpointSupport(capabilities.endpoint_support || {});
+      const lines = [];
+      lines.push('Gateway Capabilities 报告');
+      lines.push('');
+      lines.push(`Base URL: ${capabilities.base_url || baseUrl || '-'}`);
+      lines.push('');
+      lines.push('一、整体判断');
+      lines.push(`- 已测通端点：${endpointSummary.supported.length ? endpointSummary.supported.join('、') : '无'}`);
+      lines.push(`- 未测通端点：${endpointSummary.unsupported.length ? endpointSummary.unsupported.join('、') : '无'}`);
+      if (Array.isArray(rankings.text) && rankings.text.length) {
+        lines.push(`- 推荐优先尝试的文本模型：${rankings.text.slice(0, 5).join('、')}`);
+      }
+      if (Array.isArray(rankings.vision) && rankings.vision.length) {
+        lines.push(`- 推荐优先尝试的视觉模型：${rankings.vision.slice(0, 3).join('、')}`);
+      }
+      if (Array.isArray(rankings.embeddings) && rankings.embeddings.length) {
+        lines.push(`- 推荐优先尝试的向量模型：${rankings.embeddings.slice(0, 3).join('、')}`);
+      }
+      lines.push('');
+      lines.push('二、接入建议');
+      lines.push(`- ${buildAdvice(results) || '未形成明确建议。'}`);
+      lines.push('');
+      lines.push('三、模型结论');
+      for (const model of (capabilities.models || []).slice(0, 12)) {
+        lines.push(...formatCapabilityModel(model));
+      }
+      lines.push('');
+      lines.push('四、下一步建议');
+      lines.push('- 如果你要接 IDE 或聊天助手，先用报告里优先级最高的文本模型。');
+      lines.push('- 如果你要接 RAG，先确认 /v1/embeddings 稳定返回向量，再做索引。');
+      lines.push('- 如果你要接图片工作流，再单独复测 images 或高级预设里的图片相关端点。');
+      return lines.join('\n');
+    }
+
+    function renderAdviceAndReport(results, baseUrl) {
+      const adviceNode = document.getElementById('adviceCallout');
+      const reportPanel = document.getElementById('reportPanel');
+      const reportBody = document.getElementById('reportBody');
+      const advice = buildAdvice(results);
+      const report = buildCapabilitiesReport(results, baseUrl);
+      adviceNode.textContent = advice;
+      reportBody.textContent = report;
+      show(adviceNode, Boolean(advice));
+      show(reportPanel, Boolean(report));
+    }
+
     function renderResults(payload, baseUrl) {
       const panel = document.getElementById('resultsPanel');
       const chips = document.getElementById('summaryChips');
@@ -489,6 +617,7 @@ PAGE_TEMPLATE = """
         <div class="chip">Slowest: ${escapeHtml(summary.slowest_probe ?? '-')}</div>
       `;
       renderRankings(summary.rankings || {});
+      renderAdviceAndReport(payload.results || [], baseUrl);
       cards.innerHTML = (payload.results || []).map(item => {
         const card = extractCardSummary(item);
         return `
@@ -568,6 +697,15 @@ PAGE_TEMPLATE = """
 
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('cancelButton').addEventListener('click', cancelJob);
+      document.getElementById('copyReportButton').addEventListener('click', async function () {
+        const reportBody = document.getElementById('reportBody');
+        if (!reportBody.textContent) return;
+        await navigator.clipboard.writeText(reportBody.textContent);
+        this.textContent = '已复制';
+        setTimeout(() => {
+          this.textContent = '复制报告';
+        }, 1200);
+      });
       document.getElementById('probeForm').addEventListener('submit', async function (event) {
         event.preventDefault();
         renderError('');
@@ -648,7 +786,7 @@ DOCS_TEMPLATE = """
     <h1>Gateway Prober 详细说明</h1>
     <p><a href="/">返回检测页</a></p>
     <h2>1. 现在的检测顺序是什么</h2>
-    <p>按你勾选的项目顺序检测。默认顺序是 Models、Chat、Tools、Responses、Embeddings、Images。Capabilities 和 Docs 默认关闭，因为它们更细也更慢。</p>
+    <p>按你勾选的项目顺序检测。默认顺序是 Models、Chat、Tools、Responses、Embeddings、Images。Capabilities 和 Docs 默认关闭，因为它们更细也更慢；但如果你勾上 Capabilities，页面会额外生成较完整的接入建议和可复制报告。</p>
     <p>如果成功拿到 /models，系统会先把模型按用途排序，再优先拿更像主力的模型去测；不是只死盯一个默认模型。某个模型失败时，会自动换下一个候选。</p>
     <h2>2. 为什么有时只写根地址测不到，写到 /v1 才行</h2>
     <p>不少兼容网关实际上只在 <code>/v1</code> 下暴露接口。理论上工具会尝试根地址和 /v1，但有些网关的转发、重写或防火墙规则只允许 <code>/v1/*</code>。遇到这种情况，直接把 Base URL 写成到 <code>/v1</code> 为止会更稳。</p>
