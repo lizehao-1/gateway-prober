@@ -113,6 +113,17 @@ def _matches_any_suffix(path: str, suffixes: List[str]) -> Optional[str]:
     return None
 
 
+def _sanitize_attempt_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized: Dict[str, Any] = {
+        "ok": bool(result.get("ok")),
+        "status_code": result.get("status_code"),
+        "details": result.get("details", {}),
+    }
+    if "stop_retry" in result:
+        sanitized["stop_retry"] = bool(result.get("stop_retry"))
+    return sanitized
+
+
 class GatewayProber:
     def __init__(
         self,
@@ -504,11 +515,16 @@ class GatewayProber:
                     },
                     "stop_retry": False,
                 }
-            attempts.append(result)
-            if result.get("ok"):
-                result["attempts"] = attempts
-                return result
-            if result.get("stop_retry"):
+            sanitized = _sanitize_attempt_result(result)
+            attempts.append(sanitized)
+            if sanitized.get("ok"):
+                return {
+                    "ok": True,
+                    "status_code": sanitized.get("status_code"),
+                    "details": sanitized.get("details", {}),
+                    "attempts": attempts,
+                }
+            if sanitized.get("stop_retry"):
                 break
         return {
             "ok": False,

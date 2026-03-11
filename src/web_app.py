@@ -14,7 +14,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
-from probe_gateway import DEFAULT_PROBES, DEFAULT_TIMEOUT, GatewayProber
+from probe_gateway import DEFAULT_PROBES, DEFAULT_TIMEOUT, GatewayProber, _to_json_safe
 
 
 app = Flask(__name__)
@@ -168,6 +168,10 @@ def _update_job(job_id: str, **updates: Any) -> None:
         job["updated_at"] = time.time()
 
 
+def _safe_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+    return _to_json_safe(job)
+
+
 def _run_probe_job(job_id: str, payload: Dict[str, Any]) -> None:
     def progress_callback(event: Dict[str, Any]) -> None:
         _update_job(
@@ -198,7 +202,7 @@ def _run_probe_job(job_id: str, payload: Dict[str, Any]) -> None:
             progress_callback=progress_callback,
             cancel_callback=cancel_callback,
         )
-        results = [item.to_dict() for item in prober.run()]
+        results = [_to_json_safe(item.to_dict()) for item in prober.run()]
         summary = _summarize_results(results)
         was_cancelled = bool(results and results[-1].get("summary") == "probe cancelled") or cancel_callback()
         _update_job(
@@ -317,7 +321,6 @@ PAGE_TEMPLATE = """
     .error { color: var(--bad); font-size: 14px; margin: 0; }
     .hidden { display: none; }
     .mini { font-size: 12px; color: var(--muted); }
-    ul.clean { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
   </style>
 </head>
 <body>
@@ -380,11 +383,6 @@ PAGE_TEMPLATE = """
             <label class="check" title="{{ preset.description }}"><input type="checkbox" name="endpoint_preset_groups" value="{{ preset.value }}"><span>{{ preset.label }}</span></label>
             {% endfor %}
           </div>
-          <ul class="clean">
-            {% for preset in endpoint_presets %}
-            <li><strong>{{ preset.label }}</strong>：{{ preset.description }}</li>
-            {% endfor %}
-          </ul>
         </label>
         <div class="actions">
           <button type="submit" id="submitButton">开始探测</button>
@@ -654,24 +652,18 @@ DOCS_TEMPLATE = """
     <p>如果成功拿到 /models，系统会先把模型按用途排序，再优先拿更像主力的模型去测；不是只死盯一个默认模型。某个模型失败时，会自动换下一个候选。</p>
     <h2>2. 为什么有时只写根地址测不到，写到 /v1 才行</h2>
     <p>不少兼容网关实际上只在 <code>/v1</code> 下暴露接口。理论上工具会尝试根地址和 /v1，但有些网关的转发、重写或防火墙规则只允许 <code>/v1/*</code>。遇到这种情况，直接把 Base URL 写成到 <code>/v1</code> 为止会更稳。</p>
-    <h2>3. 为什么 Embeddings 会卡很久</h2>
-    <p>向量接口常见的慢点有三个：端点本身没实现但不立刻报错、网关把请求转发给了一个不存在的 embedding 模型、上游超时后才返回。现在工具已经做了两层优化：</p>
-    <ul>
-      <li>优先挑更像 embedding 的模型，不再优先拿普通聊天模型去碰运气。</li>
-      <li>Embeddings、Images、Docs、Extra Endpoints 都会用更短的单次超时，单个模型超时后会尽快跳到下一个候选。</li>
-    </ul>
-    <h2>4. 如果 Embeddings 不可用，会影响什么</h2>
+    <h2>3. 如果 Embeddings 不可用，会影响什么</h2>
     <p><code>/v1/embeddings</code> 不是聊天接口，而是把文本转成向量。它做不了时，普通聊天、代码问答、工具调用通常仍然可以用，但依赖“向量检索”的功能会变弱，甚至直接不可用。</p>
     <ul>
       <li>通常还能做：普通对话、代码补全、代码解释、Agent 调工具、基于 <code>/chat/completions</code> 或 <code>/responses</code> 的常规 IDE 助手。</li>
       <li>通常会受影响：知识库问答、RAG、项目语义搜索、文档召回、相似内容匹配、先检索再回答的工作流。</li>
       <li>如果你的 IDE 或客户端主要靠聊天接口工作，它往往还能正常用；如果它严重依赖 embedding 做索引或检索，体验就会明显下降。</li>
     </ul>
-    <h2>5. Quick / Deep 是什么</h2>
+    <h2>4. Quick / Deep 是什么</h2>
     <p><strong>Quick</strong> 只测更常见的前缀，速度优先。<strong>Deep</strong> 会增加更多前缀变体，例如 <code>/openai/v1</code>、<code>/api/v1</code>、<code>/api/openai/v1</code>，兼容更广，但会慢一些。</p>
-    <h2>6. Endpoint Strategy 是什么</h2>
+    <h2>5. Endpoint Strategy 是什么</h2>
     <p><strong>Append</strong> 表示保留默认候选端点，再追加你手填的 Endpoint Paths 和高级预设。<strong>Custom Only</strong> 表示只测你手填和预设里的路径，不再测默认端点。</p>
-    <h2>7. 常见后缀分别是干什么的</h2>
+    <h2>6. 常见后缀分别是干什么的</h2>
     <table>
       <thead><tr><th>后缀</th><th>用途</th><th>请求形态</th><th>说明</th></tr></thead>
       <tbody>
@@ -685,17 +677,17 @@ DOCS_TEMPLATE = """
         {% endfor %}
       </tbody>
     </table>
-    <h2>8. 高级预设里包含什么</h2>
+    <h2>7. 高级预设里包含什么</h2>
     <ul>
       {% for preset in endpoint_presets %}
       <li><strong>{{ preset.label }}</strong>：{{ preset.description }}</li>
       {% endfor %}
     </ul>
-    <h2>9. 真正调用 API 时这些后缀怎么用</h2>
+    <h2>8. 真正调用 API 时这些后缀怎么用</h2>
     <p>客户端通常不会自动轮流试所有后缀，而是按自己的实现直接打一个固定接口。例如老客户端常打 <code>/chat/completions</code>，新 SDK 更可能打 <code>/responses</code>，做 RAG 的打 <code>/embeddings</code>，做图片的打 <code>/images/generations</code>。探测工具的意义就在于提前把哪个接口能用、哪个不能用测清楚。</p>
-    <h2>10. 页面上的结果怎么看</h2>
+    <h2>9. 页面上的结果怎么看</h2>
     <p>摘要里会给出 PASS/FAIL、总耗时、平均耗时、最慢项。Models 成功时，还会给出文本、视觉、向量、图片的候选优先级。每张卡片默认只展示摘要，点查看详情才展开完整 JSON。</p>
-    <h2>11. 示例</h2>
+    <h2>10. 示例</h2>
     <pre>Base URL: https://example.com/v1
 Endpoint Paths:
 /v1/images/edits
@@ -817,7 +809,7 @@ def api_probe_status(job_id: str):
         job = PROBE_JOBS.get(job_id)
         if not job:
             return jsonify({"error": "job not found"}), 404
-        return jsonify(job)
+        return jsonify(_safe_job_payload(job))
 
 
 if __name__ == "__main__":
