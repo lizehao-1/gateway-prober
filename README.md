@@ -128,6 +128,37 @@ wrangler pages deploy .\cf-pages\public --project-name gateway-prober --branch m
 
 如果要绑定自定义域名，除了在 Pages 项目里绑定域名之外，还需要在 Cloudflare DNS 里把记录指向对应的 `pages.dev` 域名。
 
+## GitHub 自动同步到 Cloudflare Pages
+
+这个仓库已经准备好了 GitHub Actions 工作流：
+
+- 文件：`.github/workflows/deploy-pages.yml`
+- 触发条件：`main` 分支下 `cf-pages/**` 有变更时自动部署
+- 部署目标：Cloudflare Pages 项目 `gateway-prober`
+
+因为你现在这个 Pages 项目是 `Direct Upload`，不是 Git 集成，所以“GitHub push 后自动同步网页”的做法就是：
+
+1. GitHub Actions 检测到 `cf-pages` 变更
+2. 自动执行 `wrangler pages deploy ./cf-pages/public`
+3. Cloudflare Pages 更新线上页面
+
+要让它真正自动跑起来，还需要在 GitHub 仓库里加两个 Actions Secrets：
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+添加位置：
+
+- GitHub 仓库 `Settings`
+- `Secrets and variables`
+- `Actions`
+
+说明：
+
+- `CLOUDFLARE_ACCOUNT_ID` 就是你的 Cloudflare Account ID
+- `CLOUDFLARE_API_TOKEN` 需要有 Pages 写入权限
+- 如果这两个 secret 还没配，工作流会自动跳过，不会把 CI 跑红
+
 ## 每项能力代表什么
 
 - `models`
