@@ -3,50 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Gateway Prober | 检测 OpenAI 兼容网关的模型、接口与用途</title>
-  <meta name="description" content="检测第三方 OpenAI-compatible 网关真实支持哪些模型、接口和能力，快速判断是否适合聊天、多智能体、RAG、图片生成和自动化工作流。">
-  <meta name="robots" content="index,follow">
-  <meta name="author" content="lizehao">
+  <title>Gateway Prober</title>
+  <meta name="description" content="检测 OpenAI 兼容网关支持哪些端点、模型与能力。">
   <link rel="canonical" href="https://lizehao.asia/">
-  <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Gateway Prober">
-  <meta property="og:title" content="Gateway Prober | 检测 OpenAI 兼容网关的模型、接口与用途">
-  <meta property="og:description" content="输入 Base URL 和 API Key，快速判断一个第三方网关是否适合聊天、多智能体、RAG、图片生成和自动化工作流。">
-  <meta property="og:url" content="https://lizehao.asia/">
-  <meta property="og:image" content="https://lizehao.asia/avatar.svg">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Gateway Prober | 检测 OpenAI 兼容网关的模型、接口与用途">
-  <meta name="twitter:description" content="快速检测第三方 OpenAI-compatible 网关的模型、接口与实际用途。">
-  <meta name="twitter:image" content="https://lizehao.asia/avatar.svg">
-  <link rel="icon" type="image/svg+xml" href="/avatar.svg">
-  <link rel="shortcut icon" href="/avatar.svg">
   <link rel="stylesheet" href="/styles.css">
-  <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Gateway Prober",
-      "url": "https://lizehao.asia/",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Web",
-      "description": "检测第三方 OpenAI-compatible 网关真实支持哪些模型、接口和能力，快速判断是否适合聊天、多智能体、RAG、图片生成和自动化工作流。",
-      "author": {
-        "@type": "Person",
-        "name": "lizehao"
-      }
-    }
-  </script>
 </head>
 <body>
   <main class="shell">
     <section class="hero">
       <h1>Gateway Capability Probe</h1>
-      <p class="sub">输入 OpenAI-compatible 网关地址和 API Key，快速判断这个网关到底适合做聊天、工具调用、多智能体、RAG，还是只能做基础文本任务。</p>
-      <div class="hero-chips">
-        <span class="chip">多智能体兼容性检查</span>
-        <span class="chip">支持 OpenAI-compatible 网关</span>
-        <span class="chip">不会持久化保存 Key</span>
-      </div>
+      <p class="sub">输入 Base URL 和 API Key，快速判断这个网关更适合聊天、工具调用、Responses，还是只适合基础文本任务。</p>
     </section>
 
     <section class="panel">
@@ -54,7 +20,7 @@
         <div class="grid">
           <label>
             Base URL
-            <input id="base-url" name="base_url" placeholder="https://example.com" required>
+            <input id="base-url" name="base_url" placeholder="https://example.com/v1" required>
           </label>
           <label>
             API Key
@@ -67,14 +33,14 @@
         </div>
         <div class="actions">
           <button type="submit" id="submit-button">开始检测</button>
-          <span class="hint">API Key 仅用于当前检测请求，不会被持久化保存。</span>
+          <span class="hint">网页不会持久化保存你的 Key。</span>
         </div>
       </form>
       <div class="progress hidden" id="progress">
         <div class="spinner"></div>
         <div>
           <strong>正在检测，请稍候。</strong>
-          <p class="hint">系统会依次检查 models、chat、tool calling、responses、embeddings、images 和 docs。</p>
+          <p class="hint">默认重点检测 models、chat、tool calling、responses、embeddings。</p>
         </div>
       </div>
       <p class="error" id="error"></p>
@@ -83,18 +49,20 @@
     <section class="panel">
       <div class="split">
         <div>
-          <h2>如何使用</h2>
+          <h2>如何理解结果</h2>
           <ul class="plain-list">
-            <li>输入网关根地址，例如 `https://example.com`。</li>
-            <li>输入对应 API Key。</li>
-            <li>点击“开始检测”，等待结果返回。</li>
-            <li>优先关注 `chat_completions`、`tool_calling`、`responses`，这三项最影响多智能体可用性。</li>
+            <li><strong>chat_completions</strong> 通过：说明传统聊天接口可用。</li>
+            <li><strong>tool_calling</strong> 通过：更适合 agent、自动化、工具调用场景。</li>
+            <li><strong>responses</strong> 通过：更适合新版 SDK。</li>
+            <li><strong>embeddings</strong> 不通过：不适合知识库、RAG、语义检索。</li>
           </ul>
         </div>
         <div>
-          <h2>项目仓库</h2>
+          <h2>如果 embeddings 不可用</h2>
           <ul class="plain-list">
-            <li><a href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">github.com/lizehao-1/gateway-prober</a></li>
+            <li>不影响普通聊天、代码问答、工具调用。</li>
+            <li>会影响知识库问答、RAG、语义搜索、文档召回。</li>
+            <li>如果你的 IDE 或工作流依赖向量检索，这部分体验会变弱，甚至不可用。</li>
           </ul>
         </div>
       </div>
@@ -103,26 +71,20 @@
     <section class="panel">
       <div class="split">
         <div>
-          <h2>每个能力对应什么</h2>
+          <h2>opencode / IDE 接入建议</h2>
           <ul class="plain-list">
-            <li><strong>models</strong>：列出这个网关暴露了哪些模型，先判断模型可见范围。</li>
-            <li><strong>chat_completions</strong>：最基础的文本能力，适合聊天、问答、总结、代码解释、文案生成。</li>
-            <li><strong>tool_calling</strong>：工具调用能力，适合多智能体系统、自动化助手、工作流编排。</li>
-            <li><strong>responses</strong>：较新的统一接口能力，适合接新版 SDK 和更完整的 agent workflow。</li>
-            <li><strong>embeddings</strong>：向量嵌入能力，适合 RAG、知识库检索、语义搜索。</li>
-            <li><strong>images</strong>：图片生成能力，适合海报、封面图、配图、设计草图。</li>
-            <li><strong>docs</strong>：补充判断文档端点和接口实现风格，不是核心能力。</li>
+            <li>最稳的填写方式通常是 Base URL 填到 <code>/v1</code> 为止。</li>
+            <li>如果客户端支持自定义后缀，就按检测结果使用 <code>/v1/chat/completions</code> 或 <code>/v1/responses</code>。</li>
+            <li>如果客户端固定某个后缀、又不允许修改，而网关不支持那个后缀，就会直接不兼容。</li>
           </ul>
         </div>
         <div>
-          <h2>这个 Key 适合用来做什么</h2>
+          <h2>常见后缀说明</h2>
           <ul class="plain-list">
-            <li>如果 `chat_completions` 通过：适合普通文本任务，比如聊天、总结、写作、代码辅助。</li>
-            <li>如果 `tool_calling` 也通过：适合做多智能体、自动化执行、外部工具接入。</li>
-            <li>如果 `responses` 也通过：适合优先接新版 OpenAI SDK，后续扩展性更好。</li>
-            <li>如果 `embeddings` 不通过：不建议直接拿它做 RAG 或向量数据库检索。</li>
-            <li>如果 `images` 不通过：说明这个 Key 更偏文本用途，不适合图像生成场景。</li>
-            <li>如果核心三项都通过：通常适合做 Agent 平台、自动化工作台、研究助手。</li>
+            <li><code>/v1/chat/completions</code>：传统聊天接口</li>
+            <li><code>/v1/responses</code>：新版统一响应接口</li>
+            <li><code>/v1/embeddings</code>：向量接口，用于知识库/RAG</li>
+            <li><code>/v1/images/generations</code>：图片生成接口</li>
           </ul>
         </div>
       </div>

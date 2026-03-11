@@ -18,12 +18,7 @@ function renderSummary(baseUrl, results) {
   const passCount = results.filter((item) => item.ok).length;
   const failCount = results.length - passCount;
   summaryNode.innerHTML = "";
-
-  [
-    `Base URL: ${baseUrl}`,
-    `通过: ${passCount}`,
-    `失败: ${failCount}`,
-  ].forEach((text) => {
+  [`Base URL: ${baseUrl}`, `通过: ${passCount}`, `失败: ${failCount}`].forEach((text) => {
     const chip = document.createElement("div");
     chip.className = "chip";
     chip.textContent = text;
@@ -33,46 +28,41 @@ function renderSummary(baseUrl, results) {
 
 function renderCards(results) {
   cardsNode.innerHTML = "";
-
   for (const item of results) {
     const fragment = cardTemplate.content.cloneNode(true);
     fragment.querySelector(".name").textContent = item.name;
-
     const status = fragment.querySelector(".status");
     status.textContent = item.ok ? "PASS" : "FAIL";
     status.className = `status ${item.ok ? "ok" : "bad"}`;
-
-    fragment.querySelector(".meta").textContent =
-      `status=${item.status_code ?? "-"}, elapsed=${item.elapsed_ms}ms`;
+    fragment.querySelector(".meta").textContent = `status=${item.status_code ?? "-"}, elapsed=${item.elapsed_ms}ms`;
     fragment.querySelector(".summary-text").textContent = item.summary;
     fragment.querySelector(".details").textContent = JSON.stringify(item.details ?? {}, null, 2);
-
     cardsNode.appendChild(fragment);
   }
 }
 
 function renderCallout(results) {
-  const required = ["chat_completions", "tool_calling", "responses"];
-  const requiredOk = required.every((name) => results.find((item) => item.name === name)?.ok);
+  const chatOk = results.find((item) => item.name === "chat_completions")?.ok;
+  const toolOk = results.find((item) => item.name === "tool_calling")?.ok;
+  const responsesOk = results.find((item) => item.name === "responses")?.ok;
   const embeddingsOk = results.find((item) => item.name === "embeddings")?.ok;
-  const imagesOk = results.find((item) => item.name === "images")?.ok;
 
-  let text = "";
-  if (requiredOk) {
-    text = "这个网关适合做文本型多智能体系统，chat_completions、tool_calling、responses 都可用。";
+  const tips = [];
+  if (chatOk && toolOk && responsesOk) {
+    tips.push("这个网关适合文本型 agent、工具调用和新版 SDK。");
+  } else if (chatOk) {
+    tips.push("这个网关至少适合普通聊天和基础代码问答。");
   } else {
-    text = "这个网关不适合直接作为完整多智能体后端，至少有一项核心文本能力没有通过。";
+    tips.push("文本主接口没有完全测通，不建议直接接生产 IDE/Agent。");
   }
 
-  if (!embeddingsOk) {
-    text += " 当前不建议把 RAG 或向量检索层直接绑在这个网关上。";
+  if (embeddingsOk) {
+    tips.push("Embeddings 可用，知识库、RAG、语义搜索类工作流也可以考虑。");
+  } else {
+    tips.push("Embeddings 不可用时，普通聊天通常还能用，但知识库问答、RAG、语义搜索、文档召回会受影响。");
   }
 
-  if (imagesOk) {
-    text += " 图片接口可用，可以额外承载图像生成场景。";
-  }
-
-  calloutNode.textContent = text;
+  calloutNode.textContent = tips.join(" ");
   calloutNode.classList.remove("hidden");
 }
 
@@ -94,12 +84,10 @@ form.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || "检测失败");
     }
-
     renderSummary(payload.base_url, data.results);
     renderCallout(data.results);
     renderCards(data.results);
