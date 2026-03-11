@@ -12,88 +12,90 @@
   <main class="shell">
     <section class="hero">
       <h1>Gateway Capability Probe</h1>
-      <p class="sub">输入 Base URL 和 API Key，快速判断这个网关更适合聊天、工具调用、Responses，还是只适合基础文本任务。</p>
+      <p class="sub">输入兼容 OpenAI 的网关地址和 Key，自动检测常见端点、可用模型、能力强弱和常见兼容问题。</p>
+      <div class="navrow">
+        <a class="navlink" href="/docs-page/">查看详细说明</a>
+        <a class="navlink" href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">GitHub 项目</a>
+      </div>
     </section>
 
     <section class="panel">
       <form id="probe-form">
         <div class="grid">
-          <label>
-            Base URL
+          <label>Base URL
             <input id="base-url" name="base_url" placeholder="https://example.com/v1" required>
           </label>
-          <label>
-            API Key
+          <label>API Key
             <input id="api-key" name="api_key" type="password" placeholder="sk-..." required>
           </label>
-          <label>
-            Timeout (seconds)
+          <label>Timeout (seconds)
             <input id="timeout" name="timeout" type="number" min="1" max="120" value="20" required>
           </label>
+          <label>Probe Mode
+            <select id="probe-mode" name="probe_mode">
+              <option value="quick">Quick（常见端点，速度优先）</option>
+              <option value="deep">Deep（更多前缀，兼容优先）</option>
+            </select>
+          </label>
+          <label>Endpoint Strategy
+            <select id="endpoint-strategy" name="endpoint_strategy">
+              <option value="append">Append（保留默认端点，再追加你写的路径）</option>
+              <option value="custom_only">Custom Only（只测你写的路径和预设）</option>
+            </select>
+          </label>
         </div>
+
+        <div class="grid-wide">
+          <label>Endpoint Paths
+            <textarea id="endpoint-paths" name="endpoint_paths" placeholder="/v1/responses, /v1/chat/completions&#10;/v1/images/edits, /v1/audio/translations&#10;也支持 JSON 数组"></textarea>
+          </label>
+          <label>Text Test Models
+            <textarea id="text-models" name="text_models" placeholder="留空时会优先从 /models 里按主力文本模型排序挑选"></textarea>
+          </label>
+          <label>Vision Test Models
+            <textarea id="vision-models" name="vision_models" placeholder="留空时会优先从 /models 里按主力视觉模型排序挑选"></textarea>
+          </label>
+        </div>
+
+        <label>Enabled Probes
+          <div class="checks" id="probe-options"></div>
+          <span class="hint">默认关闭 Capabilities 和 Docs，因为它们更细也更慢。手填路径或高级预设时，Extra Endpoints 会自动加入。</span>
+        </label>
+
+        <label>高级预设
+          <div class="checks" id="preset-options"></div>
+        </label>
+
         <div class="actions">
-          <button type="submit" id="submit-button">开始检测</button>
-          <span class="hint">网页不会持久化保存你的 Key。</span>
+          <button type="submit" id="submit-button">开始探测</button>
+          <span class="hint" id="estimate-hint">预计耗时会根据探测项动态变化。</span>
         </div>
       </form>
+
+      <p class="notice hidden" id="notice"></p>
+      <p class="error hidden" id="error"></p>
+
       <div class="progress hidden" id="progress">
         <div class="spinner"></div>
         <div>
-          <strong>正在检测，请稍候。</strong>
-          <p class="hint">默认重点检测 models、chat、tool calling、responses、embeddings。</p>
-        </div>
-      </div>
-      <p class="error" id="error"></p>
-    </section>
-
-    <section class="panel">
-      <div class="split">
-        <div>
-          <h2>如何理解结果</h2>
-          <ul class="plain-list">
-            <li><strong>chat_completions</strong> 通过：说明传统聊天接口可用。</li>
-            <li><strong>tool_calling</strong> 通过：更适合 agent、自动化、工具调用场景。</li>
-            <li><strong>responses</strong> 通过：更适合新版 SDK。</li>
-            <li><strong>embeddings</strong> 不通过：不适合知识库、RAG、语义检索。</li>
-          </ul>
-        </div>
-        <div>
-          <h2>如果 embeddings 不可用</h2>
-          <ul class="plain-list">
-            <li>不影响普通聊天、代码问答、工具调用。</li>
-            <li>会影响知识库问答、RAG、语义搜索、文档召回。</li>
-            <li>如果你的 IDE 或工作流依赖向量检索，这部分体验会变弱，甚至不可用。</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="split">
-        <div>
-          <h2>opencode / IDE 接入建议</h2>
-          <ul class="plain-list">
-            <li>最稳的填写方式通常是 Base URL 填到 <code>/v1</code> 为止。</li>
-            <li>如果客户端支持自定义后缀，就按检测结果使用 <code>/v1/chat/completions</code> 或 <code>/v1/responses</code>。</li>
-            <li>如果客户端固定某个后缀、又不允许修改，而网关不支持那个后缀，就会直接不兼容。</li>
-          </ul>
-        </div>
-        <div>
-          <h2>常见后缀说明</h2>
-          <ul class="plain-list">
-            <li><code>/v1/chat/completions</code>：传统聊天接口</li>
-            <li><code>/v1/responses</code>：新版统一响应接口</li>
-            <li><code>/v1/embeddings</code>：向量接口，用于知识库/RAG</li>
-            <li><code>/v1/images/generations</code>：图片生成接口</li>
-          </ul>
+          <strong id="progress-title">正在检测，请稍候。</strong>
+          <p class="hint" id="progress-detail">请求进行中，Cloudflare Pages 版会在完成后一次性返回结果。</p>
         </div>
       </div>
     </section>
 
     <section class="panel hidden" id="results-panel">
-      <div class="summary" id="summary"></div>
+      <div class="summary" id="summary-chips"></div>
+      <div class="rankings hidden" id="ranking-chips"></div>
       <div class="callout hidden" id="callout"></div>
-      <div class="cards" id="cards"></div>
+      <div class="report hidden" id="report-panel">
+        <div class="topline">
+          <strong>完整报告</strong>
+          <button type="button" id="copy-report-button">复制报告</button>
+        </div>
+        <pre id="report-body"></pre>
+      </div>
+      <div class="cards" id="results-cards"></div>
     </section>
   </main>
 
@@ -105,7 +107,11 @@
       </div>
       <div class="meta"></div>
       <p class="summary-text"></p>
-      <pre class="details"></pre>
+      <div class="mini"></div>
+      <details>
+        <summary>查看详情</summary>
+        <pre class="details"></pre>
+      </details>
     </article>
   </template>
 

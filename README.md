@@ -36,6 +36,11 @@
 
 此外还提供了一套 Cloudflare Pages 版本，方便直接部署到公网域名。
 
+推荐理解：
+
+- 想测本地 `http://127.0.0.1:端口`、`localhost:端口`：优先用 Flask 版
+- 想挂到公网域名、给别人直接打开：用 Cloudflare Pages 版
+
 ## 本地 Web 运行
 
 先安装依赖：
@@ -55,6 +60,11 @@ python .\src\web_app.py
 ```text
 http://127.0.0.1:5050
 ```
+
+说明：
+
+- Flask 版更适合本地调试，也支持测本地 http 服务
+- 网页功能更完整，适合做高级探测和排障
 
 Windows 下也可以直接用：
 
@@ -119,6 +129,15 @@ http://127.0.0.1:5050
 - 页面样式：`cf-pages/public/styles.css`
 - 服务端探测接口：`cf-pages/functions/api/probe.js`
 
+Pages 版适合直接发布到域名，例如：
+
+- `https://lizehao.asia`
+
+但要注意：
+
+- Pages 版只能访问公网 https 地址
+- 如果你要测 `127.0.0.1`、`localhost`、局域网或本地 http，请改用 Flask 版
+
 部署示例：
 
 ```powershell
@@ -139,7 +158,7 @@ wrangler pages deploy .\cf-pages\public --project-name gateway-prober --branch m
 因为你现在这个 Pages 项目是 `Direct Upload`，不是 Git 集成，所以“GitHub push 后自动同步网页”的做法就是：
 
 1. GitHub Actions 检测到 `cf-pages` 变更
-2. 自动执行 `wrangler pages deploy ./cf-pages/public`
+2. 自动执行 `wrangler pages deploy ./cf-pages`
 3. Cloudflare Pages 更新线上页面
 
 要让它真正自动跑起来，还需要在 GitHub 仓库里加两个 Actions Secrets：
@@ -158,6 +177,22 @@ wrangler pages deploy .\cf-pages\public --project-name gateway-prober --branch m
 - `CLOUDFLARE_ACCOUNT_ID` 就是你的 Cloudflare Account ID
 - `CLOUDFLARE_API_TOKEN` 需要有 Pages 写入权限
 - 如果这两个 secret 还没配，工作流会自动跳过，不会把 CI 跑红
+
+## Capabilities 完整报告
+
+如果你在页面里开启 `Capabilities`，网页会额外生成一份“完整报告”，帮助你快速看：
+
+- 已测通端点
+- 未测通端点
+- 哪些模型真的可用
+- 更适合接 chat 还是 responses
+- embeddings / images 是否值得接入
+
+如果你想离线把一个 capabilities JSON 文件转成中文报告，也可以直接用：
+
+```powershell
+python .\src\capabilities_report.py .\2.txt
+```
 
 ## 每项能力代表什么
 

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gateway Prober 详细说明</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel">
+      <h1>Gateway Prober 详细说明</h1>
+      <div class="navrow">
+        <a class="navlink" href="/">返回检测页</a>
+        <a class="navlink" href="https://github.com/lizehao-1/gateway-prober" target="_blank" rel="noreferrer">GitHub 项目</a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>1. 本地和线上怎么用</h2>
+      <p>如果你要测本地 `http://127.0.0.1:端口`、`localhost:端口`，请直接用仓库里的 Flask 版，因为 Cloudflare Pages 线上版只能访问公网 https 地址。</p>
+      <ul class="plain-list">
+        <li>本地 Flask 版：适合测本地部署、局域网、需要更灵活调试的情况。</li>
+        <li>Cloudflare Pages 版：适合把网页挂到域名上，给自己或别人远程使用。</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>2. 为什么很多时候 Base URL 要写到 /v1</h2>
+      <p>很多兼容网关实际上只在 <code>/v1</code> 下暴露接口。遇到根地址测不出来、写到 <code>/v1</code> 才有结果时，通常不是你的 Key 有问题，而是这个网关本来就是这样设计的。</p>
+    </section>
+
+    <section class="panel">
+      <h2>3. 如果 Embeddings 不可用，会影响什么</h2>
+      <p><code>/v1/embeddings</code> 不是聊天接口，而是把文本转成向量。它做不了时，普通聊天、代码问答、工具调用通常仍然可以用，但依赖“向量检索”的功能会变弱，甚至直接不可用。</p>
+      <ul class="plain-list">
+        <li>通常还能做：普通对话、代码补全、代码解释、Agent 调工具、基于 <code>/chat/completions</code> 或 <code>/responses</code> 的常规 IDE 助手。</li>
+        <li>通常会受影响：知识库问答、RAG、项目语义搜索、文档召回、相似内容匹配、先检索再回答的工作流。</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>4. 常见后缀分别是干什么的</h2>
+      <table>
+        <thead>
+          <tr><th>后缀</th><th>用途</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>/v1/chat/completions</code></td><td>传统聊天接口</td><td>很多 IDE、旧插件、兼容层都还在用它。</td></tr>
+          <tr><td><code>/v1/responses</code></td><td>新版统一响应接口</td><td>新版 SDK 更常见。</td></tr>
+          <tr><td><code>/v1/embeddings</code></td><td>向量接口</td><td>用于知识库、RAG、语义检索。</td></tr>
+          <tr><td><code>/v1/images/generations</code></td><td>图片生成</td><td>用于海报、封面、视觉素材。</td></tr>
+          <tr><td><code>/v1/images/edits</code></td><td>图片编辑</td><td>通常需要原图或遮罩。</td></tr>
+          <tr><td><code>/v1/audio/transcriptions</code></td><td>语音转文字</td><td>常见于 Whisper 兼容接口。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>5. Capabilities 是什么</h2>
+      <p>前面的单项探测回答的是“这个接口能不能用”，而 <code>capabilities</code> 更像“细扫”：</p>
+      <ul class="plain-list">
+        <li>不是只看端点通不通，而是看哪个模型在这些端点上真的能用。</li>
+        <li>很适合排查“模型名列出来了，但实际调用失败”这种第三方网关常见问题。</li>
+        <li>开启后页面会额外生成一份完整报告，帮你总结推荐模型、已测通端点、失败端点和接入建议。</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>6. opencode / IDE 怎么填更稳</h2>
+      <ul class="plain-list">
+        <li>最稳的填写方式通常是 Base URL 填到 <code>/v1</code> 为止。</li>
+        <li>如果客户端支持自定义后缀，就按检测结果使用 <code>/v1/chat/completions</code> 或 <code>/v1/responses</code>。</li>
+        <li>如果客户端固定某个后缀、又不允许修改，而网关不支持那个后缀，就会直接不兼容。</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
